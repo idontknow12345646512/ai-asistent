@@ -9,6 +9,17 @@ const uid = () => Math.random().toString(36).slice(2)
 const fmtTime = ts => new Date(ts).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
 const fmtDate = ts => new Date(ts).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' })
 
+// Získá vždy čerstvý access token (automaticky obnoví pokud expiroval)
+async function getFreshToken() {
+  const { data, error } = await supabase.auth.refreshSession()
+  if (error || !data.session) {
+    // Fallback — zkus getSession
+    const { data: d2 } = await supabase.auth.getSession()
+    return d2?.session?.access_token ?? null
+  }
+  return data.session.access_token
+}
+
 // ── Icons ────────────────────────────────────────────────────────────────────
 const Ic = {
   send:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
@@ -25,13 +36,11 @@ const Ic = {
   user:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
 }
 
-// ── Themes ───────────────────────────────────────────────────────────────────
 const T = {
   dark:  { bg:'#0f1117', side:'#13161f', hdr:'rgba(15,17,23,0.94)', txt:'#e8eaf0', muted:'#5a6178', border:'#1e2230', accent:'#6c8fff', active:'#1c2035', aiB:'#1a1d2a', inBg:'#13161f', iaBg:'#0f1117', inBrd:'#2a2f42', btn:'#1a1d2a', modal:'#13161f', pill:'#1a1d2a', ua:'#3d4460', scrl:'#2a2f42' },
   light: { bg:'#f4f6fb', side:'#fff',    hdr:'rgba(244,246,251,0.94)', txt:'#1a1d2a', muted:'#7a849a', border:'#e2e6f0', accent:'#4c6ef5', active:'#eef1ff', aiB:'#fff',    inBg:'#fff',    iaBg:'#f4f6fb', inBrd:'#d8dde8', btn:'#edf0f7', modal:'#fff',    pill:'#edf0f7', ua:'#8898b0', scrl:'#c8cdd8' },
 }
 
-// ── Local conv helpers ───────────────────────────────────────────────────────
 const mkLocalConv = () => ({ id: uid(), title: 'Nová konverzace', messages: [], createdAt: Date.now(), local: true })
 
 export default function Chat({ session }) {
@@ -48,7 +57,7 @@ export default function Chat({ session }) {
   const [err, setErr]             = useState(null)
   const [convs, setConvs]         = useState([mkLocalConv()])
   const [activeId, setActiveId]   = useState(null)
-  const [msgs, setMsgs]           = useState([])   // zprávy přihlášeného uživatele (z DB)
+  const [msgs, setMsgs]           = useState([])
   const [dbLoading, setDbLoading] = useState(false)
 
   const endRef  = useRef(null)
@@ -82,9 +91,7 @@ export default function Chat({ session }) {
       .from('conversations')
       .select('*')
       .order('updated_at', { ascending: false })
-
     if (error) { console.error('loadDbConvs:', error); setDbLoading(false); return }
-
     if (data && data.length > 0) {
       const mapped = data.map(c => ({ ...c, local: false }))
       setConvs(mapped)
@@ -132,11 +139,7 @@ export default function Chat({ session }) {
     setErr(null); setInput(''); setAtts([])
     if (isLoggedIn) {
       const c = await createDbConv()
-      if (c) {
-        setConvs(p => [{ ...c, local: false }, ...p])
-        setActiveId(c.id)
-        setMsgs([])
-      }
+      if (c) { setConvs(p => [{ ...c, local: false }, ...p]); setActiveId(c.id); setMsgs([]) }
     } else {
       const c = mkLocalConv()
       setConvs(p => [c, ...p])
@@ -145,8 +148,7 @@ export default function Chat({ session }) {
   }
 
   async function selectConv(id) {
-    setActiveId(id)
-    setErr(null)
+    setActiveId(id); setErr(null)
     if (isLoggedIn) await loadDbMsgs(id)
   }
 
@@ -161,13 +163,12 @@ export default function Chat({ session }) {
           if (isLoggedIn) loadDbMsgs(next[0].id)
           else setMsgs([])
         } else {
-          const c = isLoggedIn ? null : mkLocalConv()
-          if (!isLoggedIn && c) { setActiveId(c.id); return [c] }
-          setActiveId(null); setMsgs([])
-          return []
+          const c = mkLocalConv()
+          setActiveId(c.id); setMsgs([])
+          return [c]
         }
       }
-      return next
+      return next.length > 0 ? next : [mkLocalConv()]
     })
   }
 
@@ -183,7 +184,7 @@ export default function Chat({ session }) {
     fileRef.current.value = ''
   }
 
-  // ── Send message ─────────────────────────────────────────────────────────
+  // ── Send ─────────────────────────────────────────────────────────────────
   const send = useCallback(async () => {
     if ((!input.trim() && !atts.length) || loading || !activeConv) return
 
@@ -191,7 +192,6 @@ export default function Chat({ session }) {
     const userText = input.trim() || atts.map(a => a.name).join(', ')
     const isLocal  = activeConv.local
 
-    // Build API content array
     const apiContent = []
     atts.forEach(a => {
       if (a.type.startsWith('image/'))
@@ -199,32 +199,25 @@ export default function Chat({ session }) {
     })
     if (input.trim()) apiContent.push({ type: 'text', text: input.trim() })
 
-    // Optimistic user message (for display only)
     const tmpUserMsg = {
       id: uid(), role: 'user', content: userText, type: 'text',
       created_at: new Date().toISOString(), _tmp: true,
     }
 
-    setInput('')
-    setAtts([])
-    setLoading(true)
-    setErr(null)
+    setInput(''); setAtts([]); setLoading(true); setErr(null)
 
-    // Snapshot of messages before this turn
     const prevMsgs = isLocal ? (activeConv.messages ?? []) : msgs
 
-    // Show user message immediately
+    // Optimisticky zobraz user zprávu
     if (isLocal) {
       setConvs(p => p.map(c => {
         if (c.id !== convId) return c
         const title = c.title === 'Nová konverzace' && userText
-          ? userText.slice(0, 38) + (userText.length > 38 ? '…' : '')
-          : c.title
+          ? userText.slice(0, 38) + (userText.length > 38 ? '…' : '') : c.title
         return { ...c, title, messages: [...(c.messages ?? []), tmpUserMsg] }
       }))
     } else {
       setMsgs(p => [...p, tmpUserMsg])
-      // Update conversation title if needed
       if (activeConv.title === 'Nová konverzace' && userText) {
         const newTitle = userText.slice(0, 38) + (userText.length > 38 ? '…' : '')
         await supabase.from('conversations').update({ title: newTitle }).eq('id', convId)
@@ -233,84 +226,74 @@ export default function Chat({ session }) {
     }
 
     try {
-      // Build full history for API (all previous + current)
       const history = [...prevMsgs, tmpUserMsg].map(m => ({
         role: m.role,
         content: m.id === tmpUserMsg.id && apiContent.length > 0
-          ? apiContent
-          : [{ type: 'text', text: m.content }]
+          ? apiContent : [{ type: 'text', text: m.content }]
       }))
 
       let result
 
       if (isLoggedIn) {
-        // Voláme přes Edge Function (bezpečné, API klíč na serveru)
-        const { data: { session: s } } = await supabase.auth.getSession()
+        // Získej vždy čerstvý token
+        const token = await getFreshToken()
+        if (!token) throw new Error('Nepodařilo se obnovit přihlášení. Zkuste se odhlásit a přihlásit znovu.')
+
         const res = await fetch(EDGE_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${s.access_token}`,
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({ messages: history, system: sysPmt, mode: imgMode ? 'image' : 'chat' }),
         })
+
         if (!res.ok) {
           const txt = await res.text()
-          throw new Error(`HTTP ${res.status}: ${txt}`)
+          let parsed
+          try { parsed = JSON.parse(txt) } catch { parsed = null }
+          const msg = parsed?.error || `HTTP ${res.status}`
+
+          // 401 = token expiroval — nabídni znovu přihlášení
+          if (res.status === 401) {
+            throw new Error('Platnost přihlášení vypršela. Odhlaste se a přihlaste se znovu.')
+          }
+          throw new Error(msg)
         }
+
         result = await res.json()
         if (result.error) throw new Error(result.error)
       } else {
-        // Nepřihlášený — volá Anthropic přímo
+        // Nepřihlášený — Anthropic přímo
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-            system: sysPmt,
-            messages: history,
-          }),
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: sysPmt, messages: history }),
         })
         const data = await res.json()
         if (data.error) throw new Error(data.error.message)
-        result = {
-          type: 'text',
-          text: data.content?.filter(b => b.type === 'text').map(b => b.text).join('\n') ?? ''
-        }
+        result = { type: 'text', text: data.content?.filter(b => b.type === 'text').map(b => b.text).join('\n') ?? '' }
       }
 
-      // Process response
-      const isImg   = result.type === 'image' && result.svg
-      const aType   = isImg ? 'image' : 'text'
+      const isImg    = result.type === 'image' && result.svg
+      const aType    = isImg ? 'image' : 'text'
       const aContent = isImg ? '🎨 Vygenerovaný obrázek' : (result.text ?? '(prázdná odpověď)')
-      const imageUrl = isImg
-        ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(result.svg)
-        : null
+      const imageUrl = isImg ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(result.svg) : null
 
-      const aMsg = {
-        id: uid(), role: 'assistant', content: aContent, type: aType,
-        image_url: imageUrl, created_at: new Date().toISOString(),
-      }
+      const aMsg = { id: uid(), role: 'assistant', content: aContent, type: aType, image_url: imageUrl, created_at: new Date().toISOString() }
 
       if (isLocal) {
-        setConvs(p => p.map(c => {
-          if (c.id !== convId) return c
-          return { ...c, messages: [...(c.messages ?? []), aMsg] }
-        }))
+        setConvs(p => p.map(c => c.id !== convId ? c : { ...c, messages: [...(c.messages ?? []), aMsg] }))
       } else {
-        // Uložit do DB — nejprve user zprávu, pak assistant zprávu
         await saveDbMsg(convId, 'user', userText, 'text', null)
         await saveDbMsg(convId, 'assistant', aContent, aType, imageUrl)
         await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
-        // Aktualizuj stav — odstraň tmp zprávu a načti z DB pro konzistenci
-        setMsgs(p => [...p.filter(m => m.id !== tmpUserMsg.id), { ...tmpUserMsg, _tmp: false }, aMsg])
+        setMsgs(p => [...p.filter(m => !m._tmp), { ...tmpUserMsg, _tmp: false }, aMsg])
       }
 
     } catch (e) {
       console.error('send error:', e)
       setErr('Chyba: ' + e.message)
-      // Vrátit zprávy zpět
       if (isLocal) {
         setConvs(p => p.map(c => c.id === convId ? { ...c, messages: prevMsgs } : c))
       } else {
@@ -324,14 +307,12 @@ export default function Chat({ session }) {
 
   const onKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }
 
-  // ── Derived ──────────────────────────────────────────────────────────────
   const displayMsgs = activeConv?.local ? (activeConv.messages ?? []) : msgs
   const canSend     = (input.trim() || atts.length > 0) && !loading
   const userInitial = session
     ? (session.user.user_metadata?.full_name || session.user.email || 'U')[0].toUpperCase()
     : '?'
 
-  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:t.bg, color:t.txt, fontFamily:"'DM Sans','Segoe UI',sans-serif" }}>
       <style>{`
@@ -349,7 +330,7 @@ export default function Chat({ session }) {
         .ib:hover{opacity:.65}
       `}</style>
 
-      {/* ── SIDEBAR ────────────────────────────────────────────────────────── */}
+      {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
       {sideOpen && (
         <aside style={{ width:256, background:t.side, borderRight:`1px solid ${t.border}`, display:'flex', flexDirection:'column', flexShrink:0 }}>
           <div style={{ padding:'13px 11px', borderBottom:`1px solid ${t.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -376,7 +357,6 @@ export default function Chat({ session }) {
             }
           </div>
 
-          {/* User footer */}
           <div style={{ padding:'10px 11px', borderTop:`1px solid ${t.border}` }}>
             {isLoggedIn ? (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -398,10 +378,8 @@ export default function Chat({ session }) {
         </aside>
       )}
 
-      {/* ── MAIN ───────────────────────────────────────────────────────────── */}
+      {/* ── MAIN ─────────────────────────────────────────────────────────── */}
       <main style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-
-        {/* Header */}
         <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 14px', height:52, background:t.hdr, borderBottom:`1px solid ${t.border}`, backdropFilter:'blur(12px)', flexShrink:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <button className="ib" onClick={() => setSideOpen(o => !o)} style={{ color:t.muted, display:'flex', padding:5 }}>{Ic.menu}</button>
@@ -418,7 +396,6 @@ export default function Chat({ session }) {
 
         {/* Messages */}
         <div style={{ flex:1, overflowY:'auto', padding:'20px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-
           {displayMsgs.length === 0 && !loading && (
             <div style={{ textAlign:'center', marginTop:'9vh' }}>
               <div style={{ width:52, height:52, borderRadius:14, background:t.accent+'22', border:`1.5px solid ${t.accent}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, margin:'0 auto 14px', color:t.accent }}>✦</div>
@@ -446,7 +423,7 @@ export default function Chat({ session }) {
                     <div style={{ fontSize:10, color:t.muted, marginTop:4, textAlign:'right' }}>{fmtTime(msg.created_at)}</div>
                   </div>
                 ) : (
-                  <div style={{ padding:'10px 14px', background:msg.role==='user'?t.accent:t.aiB, color:msg.role==='user'?'#fff':t.txt, borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', border:msg.role==='assistant'?`1px solid ${t.border}`:'none', opacity: msg._tmp ? 0.7 : 1 }}>
+                  <div style={{ padding:'10px 14px', background:msg.role==='user'?t.accent:t.aiB, color:msg.role==='user'?'#fff':t.txt, borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', border:msg.role==='assistant'?`1px solid ${t.border}`:'none', opacity:msg._tmp?0.7:1 }}>
                     <div style={{ fontSize:14, lineHeight:1.65, whiteSpace:'pre-wrap' }}>{msg.content}</div>
                     <div style={{ fontSize:10, color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted, marginTop:4, textAlign:'right' }}>{fmtTime(msg.created_at)}</div>
                   </div>
@@ -473,17 +450,15 @@ export default function Chat({ session }) {
           )}
 
           {err && (
-            <div style={{ padding:'9px 13px', background:'#ff444418', border:'1px solid #ff444440', borderRadius:9, fontSize:13, color:'#ff6b6b', display:'flex', alignItems:'flex-start', gap:8 }}>
+            <div style={{ padding:'9px 13px', background:'#ff444418', border:'1px solid #ff444440', borderRadius:9, fontSize:13, color:'#ff6b6b', display:'flex', gap:8 }}>
               <span>⚠️</span><span>{err}</span>
             </div>
           )}
-
           <div ref={endRef}/>
         </div>
 
         {/* Input area */}
         <div style={{ padding:'10px 14px 14px', background:t.iaBg, borderTop:`1px solid ${t.border}`, flexShrink:0 }}>
-          {/* Toolbar */}
           <div style={{ display:'flex', gap:6, marginBottom:8 }}>
             {isLoggedIn && (
               <button onClick={() => setImgMode(m => !m)}
@@ -493,7 +468,6 @@ export default function Chat({ session }) {
             )}
           </div>
 
-          {/* Attachments */}
           {atts.length > 0 && (
             <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
               {atts.map(a => (
@@ -508,14 +482,13 @@ export default function Chat({ session }) {
             </div>
           )}
 
-          {/* Input box */}
           <div style={{ display:'flex', alignItems:'flex-end', gap:6, padding:'9px 11px', background:t.inBg, border:`1.5px solid ${t.inBrd}`, borderRadius:14 }}>
             <textarea ref={taRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
               placeholder={imgMode ? '🎨 Popište obrázek…' : 'Napište zprávu… (Enter = odeslat)'}
               rows={1} style={{ flex:1, fontSize:14, lineHeight:1.5, color:t.txt, caretColor:t.accent, maxHeight:130, overflowY:'auto', paddingTop:2 }}
               onInput={e => { e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,130)+'px' }}/>
             <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-              <button className="ib" onClick={() => fileRef.current.click()} style={{ color:t.muted, display:'flex', padding:5 }} title="Přidat soubor">{Ic.clip}</button>
+              <button className="ib" onClick={() => fileRef.current.click()} style={{ color:t.muted, display:'flex', padding:5 }}>{Ic.clip}</button>
               <button onClick={send} disabled={!canSend}
                 style={{ width:32, height:32, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', background:canSend?t.accent:t.btn, color:canSend?'#fff':t.muted, transition:'all .15s', flexShrink:0 }}>
                 {Ic.send}
@@ -529,10 +502,8 @@ export default function Chat({ session }) {
         </div>
       </main>
 
-      {/* Auth modal */}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)}/>}
 
-      {/* Settings modal */}
       {showSet && (
         <div onClick={() => setShowSet(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, backdropFilter:'blur(4px)' }}>
           <div onClick={e => e.stopPropagation()} style={{ width:'min(450px,90vw)', borderRadius:13, padding:20, background:t.modal, border:`1px solid ${t.border}` }}>
