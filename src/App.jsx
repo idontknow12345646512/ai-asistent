@@ -1,28 +1,26 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
-import Auth from './Auth'
 import Chat from './Chat'
 
 export default function App() {
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [session, setSession] = useState(undefined) // undefined = loading, null = not logged in
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
+      setSession(session ?? null)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+      setSession(session ?? null)
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1117', color:'#6c8fff', fontFamily:'DM Sans, sans-serif', fontSize:15 }}>
+  // Zobraz chat okamžitě — session předáme jako prop (může být null)
+  if (session === undefined) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0f1117', color: '#6c8fff', fontFamily: 'DM Sans, sans-serif', fontSize: 14 }}>
       Načítám…
     </div>
   )
 
-  return session ? <Chat session={session} /> : <Auth />
+  return <Chat session={session} />
 }
