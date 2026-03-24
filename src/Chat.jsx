@@ -249,7 +249,7 @@ export default function Chat({ session }) {
       } else {
         // Nepřihlášený — Gemini přímo (bez obrázků)
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=VLOZ_SVUJ_GEMINI_KLIC`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=VLOZ_SVUJ_GEMINI_KLIC`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
