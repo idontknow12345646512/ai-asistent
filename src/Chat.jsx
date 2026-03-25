@@ -247,22 +247,23 @@ export default function Chat({ session }) {
         result = await res.json()
         if (result.error) throw new Error(result.error)
       } else {
-        // Nepřihlášený — Gemini přímo (bez obrázků)
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=VLOZ_SVUJ_GEMINI_KLIC`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: sysPmt }] },
-              contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: Array.isArray(m.content) ? m.content.filter(c => c.type === 'text').map(c => ({ text: c.text })) : [{ text: String(m.content) }] })),
-              generationConfig: { maxOutputTokens: 1000 }
-            })
-          }
-        )
-        const data = await res.json()
-        if (data.error) throw new Error(data.error.message)
-        result = { type: 'text', text: data.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('\n') ?? '' }
+        // Nepřihlášený — použij Edge Function bez autorizace (anonymní volání)
+        const res = await fetch(EDGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Pošleme anon key místo user tokenu
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqZHZna2R2ZXp6ZmF6ZXh6ZnJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTYyODIsImV4cCI6MjA4OTc5MjI4Mn0.ZkZ9jImrSZDHAkSnAWPGgwXXkXEu4YnJtUbeyX99eOg`,
+          },
+          body: JSON.stringify({ messages: history, system: sysPmt, mode: 'chat' }),
+        })
+        if (!res.ok) {
+          const txt = await res.text()
+          let p; try { p = JSON.parse(txt) } catch { p = null }
+          throw new Error(p?.error || `HTTP ${res.status}`)
+        }
+        result = await res.json()
+        if (result.error) throw new Error(result.error)
       }
 
       // Zpracuj odpověď
