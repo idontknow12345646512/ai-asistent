@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 import AuthModal from './AuthModal'
+import LiveModal from './LiveModal'
 
-// ── Constants ────────────────────────────────────────────────────────────────
 const EDGE = 'https://sjdvgkdvezzfazexzfrf.supabase.co/functions/v1/claude-chat'
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqZHZna2R2ZXp6ZmF6ZXh6ZnJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTYyODIsImV4cCI6MjA4OTc5MjI4Mn0.ZkZ9jImrSZDHAkSnAWPGgwXXkXEu4YnJtUbeyX99eOg'
 const SYS_DEFAULT = 'Jsi profesionální AI asistent. Odpovídáš vždy formálně, přesně a věcně. Píšeš v češtině pokud uživatel nepíše jinak.'
 const EMOTION_EMOJI = { happy:'😊', sad:'😔', angry:'😠', anxious:'😰', neutral:'😐', excited:'🤩', frustrated:'😤' }
+const CONV_COLORS = ['', '#6c8fff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#f97316']
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2)
 const fmtTime = ts => new Date(ts).toLocaleTimeString('cs-CZ', { hour:'2-digit', minute:'2-digit' })
 const fmtDate = ts => {
@@ -48,14 +48,28 @@ function detectAutoMode(text, imgMode) {
 }
 const mkLocal = () => ({ id: uid(), title: 'Nová konverzace', messages: [], createdAt: Date.now(), local: true })
 
-// ── Themes ───────────────────────────────────────────────────────────────────
+// Jednoduchý markdown renderer (tučné, kurzíva, kód, nadpisy, seznamy)
+function renderMarkdown(text) {
+  if (!text) return ''
+  return text
+    .replace(/```([\s\S]*?)```/g, '<pre style="background:rgba(0,0,0,0.3);padding:10px 12px;border-radius:8px;overflow-x:auto;font-size:12px;font-family:monospace;margin:6px 0">$1</pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.25);padding:2px 5px;border-radius:4px;font-size:12px;font-family:monospace">$1</code>')
+    .replace(/^### (.+)$/gm, '<strong style="font-size:15px;display:block;margin:8px 0 4px">$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong style="font-size:16px;display:block;margin:10px 0 4px">$1</strong>')
+    .replace(/^# (.+)$/gm, '<strong style="font-size:18px;display:block;margin:12px 0 6px">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0"><span>•</span><span>$1</span></div>')
+    .replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0"><span style="min-width:16px">$1.</span><span>$2</span></div>')
+    .replace(/\n/g, '<br/>')
+}
+
 const T = {
   dark:     { bg:'#0f1117', side:'#13161f', hdr:'rgba(15,17,23,0.96)', txt:'#e8eaf0', muted:'#5a6178', border:'#1e2230', accent:'#6c8fff', purple:'#a855f7', active:'#1c2035', aiB:'#1a1d2a', inBg:'#13161f', iaBg:'#0f1117', inBrd:'#2a2f42', btn:'#1a1d2a', modal:'#13161f', pill:'#1a1d2a', ua:'#3d4460', scrl:'#2a2f42', card:'#1e2230', tag:'#1c2035', success:'#22543d', successTxt:'#68d391', danger:'#e53e3e' },
   light:    { bg:'#f4f6fb', side:'#fff', hdr:'rgba(244,246,251,0.96)', txt:'#1a1d2a', muted:'#7a849a', border:'#e2e6f0', accent:'#4c6ef5', purple:'#9333ea', active:'#eef1ff', aiB:'#fff', inBg:'#fff', iaBg:'#f4f6fb', inBrd:'#d8dde8', btn:'#edf0f7', modal:'#fff', pill:'#edf0f7', ua:'#8898b0', scrl:'#c8cdd8', card:'#edf0f7', tag:'#eef1ff', success:'#f0fff4', successTxt:'#276749', danger:'#dc2626' },
   midnight: { bg:'#070a12', side:'#0c0f1c', hdr:'rgba(7,10,18,0.97)', txt:'#dde4f5', muted:'#4a526a', border:'#151b2e', accent:'#818cf8', purple:'#c084fc', active:'#141728', aiB:'#111525', inBg:'#0c0f1c', iaBg:'#070a12', inBrd:'#1e2540', btn:'#111525', modal:'#0c0f1c', pill:'#111525', ua:'#2d3555', scrl:'#1e2540', card:'#141728', tag:'#141728', success:'#1a3a2a', successTxt:'#6ee7b7', danger:'#e53e3e' },
 }
 
-// ── Icons ────────────────────────────────────────────────────────────────────
 const Ic = {
   send:    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
   plus:    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -84,9 +98,14 @@ const Ic = {
   check:   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
   moon:    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
   sun:     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
+  copy:    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  star:    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  starFill:<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  export:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+  live:    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 7.76a6 6 0 0 0 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>,
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function ImgSearchResults({ images, query, t }) {
   const [errs, setErrs] = useState({})
@@ -144,7 +163,7 @@ function QuizCard({ data, t }) {
       <div style={{fontSize:13,fontWeight:600,color:t.txt,marginBottom:12}}>🎓 {data.question}</div>
       <div style={{display:'flex',flexDirection:'column',gap:7}}>
         {data.options?.map((opt,i) => {
-          const isCorrect = i===data.correct, isSelected = sel===i
+          const isCorrect=i===data.correct, isSelected=sel===i
           let bg=t.btn, clr=t.txt, brd=t.border
           if (sel!==null) { if(isCorrect){bg=t.success;clr=t.successTxt;brd=t.successTxt} else if(isSelected){bg='#2a1a1a';clr='#fca5a5';brd='#6a2d2d'} }
           return (
@@ -167,7 +186,7 @@ function QuizCard({ data, t }) {
 
 function VoiceBtn({ t, onTranscript }) {
   const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
+  const [txt, setTxt] = useState('')
   const recRef = useRef(null)
   const supported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
   if (!supported) return null
@@ -176,9 +195,9 @@ function VoiceBtn({ t, onTranscript }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     const rec = new SR(); rec.continuous=false; rec.interimResults=true; rec.lang='cs-CZ'
     rec.onresult = e => {
-      const txt = Array.from(e.results).map(r=>r[0].transcript).join('')
-      setTranscript(txt)
-      if (e.results[e.results.length-1].isFinal) { onTranscript(txt); setTranscript(''); setListening(false) }
+      const t2 = Array.from(e.results).map(r=>r[0].transcript).join('')
+      setTxt(t2)
+      if (e.results[e.results.length-1].isFinal) { onTranscript(t2); setTxt(''); setListening(false) }
     }
     rec.onerror = () => setListening(false)
     rec.onend = () => setListening(false)
@@ -187,32 +206,48 @@ function VoiceBtn({ t, onTranscript }) {
   return (
     <div style={{display:'flex',alignItems:'center',gap:8}}>
       <button onClick={toggle} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 11px',borderRadius:20,background:listening?'#ef4444':t.btn,color:listening?'#fff':t.muted,border:`1px solid ${listening?'#ef4444':t.border}`,fontSize:12,fontWeight:listening?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .2s'}}>
-        {listening ? <>{Ic.micOff} Stop</> : <>{Ic.mic} Hlasový vstup</>}
+        {listening?<>{Ic.micOff} Stop</>:<>{Ic.mic} Hlas</>}
       </button>
-      {transcript && <span style={{fontSize:12,color:t.muted,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}}>„{transcript}"</span>}
+      {txt&&<span style={{fontSize:12,color:t.muted,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:140}}>„{txt}"</span>}
     </div>
   )
 }
 
-function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory }) {
+function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory, onStar, starred }) {
   const [rating, setRating] = useState(null)
   const [showFix, setShowFix] = useState(false)
   const [fix, setFix] = useState('')
-  const sendFeedback = async (r) => {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    navigator.clipboard.writeText(msg.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  const sendFeedback = async r => {
     setRating(r)
     if (token && msg.dbId) { try { await callEdge('feedback', {messageId:msg.dbId,rating:r,correction:fix||null}, token) } catch {} }
     setShowFix(false)
   }
+
   return (
-    <div style={{position:'relative'}}>
+    <div>
       <div style={{display:'flex',alignItems:'center',gap:4,marginTop:5,flexWrap:'wrap'}}>
+        <button onClick={copy} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:copied?t.success:t.btn,color:copied?t.successTxt:t.muted,fontSize:11,border:`1px solid ${copied?t.successTxt:t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .2s'}}>
+          {Ic.copy}{copied?'Zkopírováno!':'Kopírovat'}
+        </button>
         <button onClick={()=>onExplain(msg)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>
           {Ic.explain} Vysvětlit
         </button>
-        {isLoggedIn && (
-          <button onClick={()=>onSaveMemory(msg.content)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>
-            {Ic.memory} Zapamatovat
-          </button>
+        {isLoggedIn&&(
+          <>
+            <button onClick={()=>onSaveMemory(msg.content)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>
+              {Ic.memory} Zapamatovat
+            </button>
+            <button onClick={()=>onStar(msg)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:starred?'#f59e0b22':t.btn,color:starred?'#f59e0b':t.muted,border:`1px solid ${starred?'#f59e0b':t.border}`,cursor:'pointer',transition:'all .2s'}}>
+              {starred?Ic.starFill:Ic.star}
+            </button>
+          </>
         )}
         <button onClick={()=>sendFeedback(1)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:rating===1?t.success:t.btn,color:rating===1?t.successTxt:t.muted,border:`1px solid ${rating===1?t.successTxt:t.border}`,cursor:'pointer'}}>
           {Ic.thumbUp}
@@ -221,7 +256,7 @@ function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory }) {
           {Ic.thumbDn}
         </button>
       </div>
-      {showFix && (
+      {showFix&&(
         <div style={{marginTop:6,padding:12,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10}}>
           <div style={{fontSize:12,color:t.txt,marginBottom:7}}>Jak by správná odpověď měla znít?</div>
           <textarea value={fix} onChange={e=>setFix(e.target.value)} rows={3} placeholder="Napište opravu…"
@@ -240,29 +275,22 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
   const [tmpPmt, setTmpPmt] = useState(sysPmt)
   const [memList, setMemList] = useState([])
   const [tab, setTab] = useState('appearance')
-
   useEffect(() => {
-    if (tab==='memory' && isLoggedIn) {
-      supabase.from('user_memory').select('*').eq('user_id', userId).order('created_at',{ascending:false}).limit(20)
-        .then(({data}) => setMemList(data||[]))
+    if (tab==='memory'&&isLoggedIn) {
+      supabase.from('user_memory').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(20)
+        .then(({data})=>setMemList(data||[]))
     }
   }, [tab, isLoggedIn, userId])
-
-  const delMem = async id => {
-    await supabase.from('user_memory').delete().eq('id', id)
-    setMemList(p=>p.filter(m=>m.id!==id))
-  }
-
+  const delMem = async id => { await supabase.from('user_memory').delete().eq('id',id); setMemList(p=>p.filter(m=>m.id!==id)) }
   const themeOpts = [{id:'dark',label:'Tmavý',icon:'🌙'},{id:'light',label:'Světlý',icon:'☀️'},{id:'midnight',label:'Midnight',icon:'🌌'}]
   const personas = [
     {label:'Profesionální asistent', val:SYS_DEFAULT},
     {label:'Přátelský pomocník', val:'Jsi přátelský a uvolněný AI pomocník. Komunikuješ neformálně a s humorem. Píšeš v češtině.'},
     {label:'Expert programátor', val:'Jsi expert na programování. Odpovídáš přesně s kódovými příklady. Preferuješ stručnost.'},
     {label:'Kreativní spisovatel', val:'Jsi kreativní spisovatel a básník. Pomáháš s tvorbou textů, příběhů a básní.'},
-    {label:'Lektor / učitel', val:'Jsi trpělivý lektor. Vysvětluješ jednoduše, používáš příklady. Přizpůsobuješ se tempu studenta.'},
+    {label:'Lektor / učitel', val:'Jsi trpělivý lektor. Vysvětluješ jednoduše s příklady. Přizpůsobuješ se tempu studenta.'},
   ]
   const tabs = [{id:'appearance',label:'Vzhled',icon:'🎨'},{id:'behavior',label:'Chování',icon:'🤖'},{id:'memory',label:'Paměť',icon:'🧠'},{id:'about',label:'O aplikaci',icon:'ℹ️'}]
-
   return (
     <>
       <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:49,backdropFilter:'blur(4px)'}}/>
@@ -272,40 +300,40 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
           <button onClick={onClose} style={{background:'none',border:'none',color:t.muted,cursor:'pointer',fontSize:20,display:'flex',padding:4}}>{Ic.x}</button>
         </div>
         <div style={{display:'flex',gap:4,padding:'12px 20px 0',flexShrink:0}}>
-          {tabs.map(tb => (
+          {tabs.map(tb=>(
             <button key={tb.id} onClick={()=>setTab(tb.id)} style={{padding:'6px 12px',borderRadius:8,background:tab===tb.id?t.accent:t.btn,color:tab===tb.id?'#fff':t.muted,fontSize:12,fontWeight:tab===tb.id?600:400,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
               {tb.icon} {tb.label}
             </button>
           ))}
         </div>
         <div style={{flex:1,overflowY:'auto',padding:'16px 20px 20px'}}>
-          {tab==='appearance' && (
+          {tab==='appearance'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>Barevné téma</div>
               <div style={{display:'flex',gap:8,marginBottom:16}}>
-                {themeOpts.map(th => (
+                {themeOpts.map(th=>(
                   <button key={th.id} onClick={()=>setThemeName(th.id)} style={{flex:1,padding:'12px 8px',borderRadius:10,border:`2px solid ${themeName===th.id?t.accent:t.border}`,background:themeName===th.id?t.accent+'22':t.btn,color:themeName===th.id?t.accent:t.muted,fontSize:12,fontWeight:themeName===th.id?600:400,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',textAlign:'center'}}>
                     <div style={{fontSize:22,marginBottom:5}}>{th.icon}</div>{th.label}
-                    {themeName===th.id && <div style={{marginTop:4}}>{Ic.check}</div>}
+                    {themeName===th.id&&<div style={{marginTop:4}}>{Ic.check}</div>}
                   </button>
                 ))}
               </div>
             </>
           )}
-          {tab==='behavior' && (
+          {tab==='behavior'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>Osobnost asistenta</div>
               <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:18}}>
-                {personas.map(p => (
+                {personas.map(p=>(
                   <button key={p.label} onClick={()=>setTmpPmt(p.val)} style={{padding:'10px 13px',borderRadius:9,border:`1.5px solid ${tmpPmt===p.val?t.accent:t.border}`,background:tmpPmt===p.val?t.accent+'18':t.btn,color:tmpPmt===p.val?t.accent:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'all .15s'}}>
-                    {p.label}{tmpPmt===p.val && <span style={{color:t.accent}}>{Ic.check}</span>}
+                    {p.label}{tmpPmt===p.val&&<span style={{color:t.accent}}>{Ic.check}</span>}
                   </button>
                 ))}
               </div>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>Vlastní systémový prompt</div>
               <textarea value={tmpPmt} onChange={e=>setTmpPmt(e.target.value)} rows={4}
-                style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:6}}/>
-              <div style={{marginTop:12,padding:'12px 14px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`}}>
+                style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{padding:'12px 14px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`}}>
                 <div style={{fontSize:12,fontWeight:600,color:t.txt,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>{Ic.brain} Epizodická paměť</div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                   <span style={{fontSize:12,color:t.muted}}>AI si pamatuje kontext z minulých chatů</span>
@@ -316,12 +344,12 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
               </div>
             </>
           )}
-          {tab==='memory' && (
+          {tab==='memory'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Uložená paměť {memList.length>0&&`(${memList.length})`}</div>
-              {!isLoggedIn && <p style={{fontSize:13,color:t.muted}}>Pro správu paměti se přihlaste.</p>}
-              {isLoggedIn&&memList.length===0 && <p style={{fontSize:13,color:t.muted}}>Paměť je prázdná.</p>}
-              {memList.map(m => (
+              {!isLoggedIn&&<p style={{fontSize:13,color:t.muted}}>Pro správu paměti se přihlaste.</p>}
+              {isLoggedIn&&memList.length===0&&<p style={{fontSize:13,color:t.muted}}>Paměť je prázdná.</p>}
+              {memList.map(m=>(
                 <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'9px 12px',borderRadius:9,background:t.tag,border:`1px solid ${t.border}`,marginBottom:7}}>
                   <span style={{fontSize:10,color:t.muted,background:t.btn,padding:'2px 6px',borderRadius:4,flexShrink:0,marginTop:1}}>{m.category}</span>
                   <span style={{fontSize:13,color:t.txt,flex:1,lineHeight:1.4}}>{m.content}</span>
@@ -330,12 +358,12 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
               ))}
             </>
           )}
-          {tab==='about' && (
+          {tab==='about'&&(
             <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>
               <div style={{width:52,height:52,borderRadius:14,background:t.accent+'22',border:`1.5px solid ${t.accent}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,margin:'0 auto 16px',color:t.accent}}>✦</div>
-              <p style={{textAlign:'center',fontWeight:600,color:t.txt,fontSize:15,marginBottom:4}}>AI Asistent v1.0</p>
+              <p style={{textAlign:'center',fontWeight:600,color:t.txt,fontSize:15,marginBottom:4}}>AI Asistent v2.0</p>
               <p style={{textAlign:'center',marginBottom:16}}>Powered by Google Gemini AI</p>
-              {[['🤖 Chat','Gemini 3.1 Flash'],['🎨 Obrázky','Google Imagen 4'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['🔒 Auth','Supabase Auth']].map(([k,v]) => (
+              {[['🤖 Chat','Gemini 3.1 Flash'],['🔴 Live','Gemini 2.0 Flash Live'],['🎨 Obrázky','Google Imagen 4'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
                 <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,marginBottom:6}}>
                   <span>{k}</span><span style={{color:t.accent,fontSize:12}}>{v}</span>
                 </div>
@@ -343,7 +371,7 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
             </div>
           )}
         </div>
-        {(tab==='appearance'||tab==='behavior') && (
+        {(tab==='appearance'||tab==='behavior')&&(
           <div style={{padding:'0 20px 20px',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
             <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,background:t.btn,color:t.txt,fontSize:13,fontWeight:500,cursor:'pointer',border:'none',fontFamily:'inherit'}}>Zrušit</button>
             <button onClick={()=>{setSysPmt(tmpPmt);onClose()}} style={{padding:'8px 16px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',border:'none',fontFamily:'inherit'}}>Uložit</button>
@@ -359,10 +387,12 @@ export default function Chat({ session }) {
   const [themeName, setThemeName] = useState(() => localStorage.getItem('theme')||'dark')
   const [showAuth, setShowAuth]   = useState(false)
   const [showSet, setShowSet]     = useState(false)
+  const [showLive, setShowLive]   = useState(false)
   const [sysPmt, setSysPmt]       = useState(() => localStorage.getItem('syspmt')||SYS_DEFAULT)
   const [imgMode, setImgMode]     = useState('chat')
   const [thinking, setThinking]   = useState(false)
   const [memory, setMemory]       = useState(true)
+  const [markdownMode, setMarkdownMode] = useState(true)
   const [sideOpen, setSideOpen]   = useState(() => typeof window!=='undefined'&&window.innerWidth>768)
   const [input, setInput]         = useState('')
   const [atts, setAtts]           = useState([])
@@ -382,6 +412,8 @@ export default function Chat({ session }) {
   const [quizTopic, setQuizTopic] = useState('')
   const [explainTxt, setExplainTxt] = useState(null)
   const [token, setToken]         = useState(null)
+  const [starredMsgs, setStarredMsgs] = useState(new Set())
+  const [showStarred, setShowStarred] = useState(false)
 
   const endRef    = useRef(null)
   const fileRef   = useRef(null)
@@ -406,10 +438,8 @@ export default function Chat({ session }) {
   useEffect(()=>{
     const last = msgs.filter(m=>m.role==='user').at(-1)
     if (!last?.content||last.content.length<20) return
-    const tk = token||ANON
-    callEdge('detect_emotion',{messages:[{role:'user',content:last.content}]},tk)
-      .then(d=>{ if(d.emotion&&d.emotion!=='neutral') setEmotion(d) })
-      .catch(()=>{})
+    callEdge('detect_emotion',{messages:[{role:'user',content:last.content}]},token||ANON)
+      .then(d=>{ if(d.emotion&&d.emotion!=='neutral') setEmotion(d) }).catch(()=>{})
   },[msgs.length]) // eslint-disable-line
 
   // DB helpers
@@ -423,6 +453,9 @@ export default function Chat({ session }) {
   async function loadDbMsgs(convId) {
     const {data} = await supabase.from('messages').select('*').eq('conversation_id',convId).order('created_at',{ascending:true})
     setMsgs(data??[])
+    // Načti starred
+    const starred = new Set((data??[]).filter(m=>m.starred).map(m=>m.id))
+    setStarredMsgs(starred)
   }
   async function createDbConv(title='Nová konverzace') {
     const {data} = await supabase.from('conversations').insert({user_id:session.user.id,title}).select().single()
@@ -457,12 +490,29 @@ export default function Chat({ session }) {
     setConvs(p=>p.map(c=>c.id===id?{...c,title}:c))
     setEditingId(null)
   }
+  async function setConvColor(id,color) {
+    if (isLoggedIn) await supabase.from('conversations').update({color}).eq('id',id)
+    setConvs(p=>p.map(c=>c.id===id?{...c,color}:c))
+  }
   async function autoTitle(convId,firstMsg) {
     try {
-      const tk=token||ANON
-      const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:firstMsg}]}]},tk)
+      const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:firstMsg}]}]},token||ANON)
       if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',convId);setConvs(p=>p.map(c=>c.id===convId?{...c,title:d.title}:c))}
     } catch {}
+  }
+
+  // Star message
+  const starMsg = async msg => {
+    const newStarred = !starredMsgs.has(msg.id)
+    setStarredMsgs(p=>{ const n=new Set(p); newStarred?n.add(msg.id):n.delete(msg.id); return n })
+    if (isLoggedIn&&msg.dbId) await supabase.from('messages').update({starred:newStarred}).eq('id',msg.dbId||msg.id)
+  }
+
+  // Export chat
+  const exportChat = () => {
+    const lines = displayMsgs.map(m=>`[${m.role==='user'?'Vy':'AI'}] ${fmtTime(m.created_at)}\n${m.content}\n`)
+    const blob = new Blob([lines.join('\n---\n\n')], {type:'text/plain;charset=utf-8'})
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`chat-${activeConv?.title||'export'}.txt`; a.click()
   }
 
   // Search
@@ -493,8 +543,7 @@ export default function Chat({ session }) {
     if(isLocal) setConvs(p=>p.map(c=>c.id!==convId?c:{...c,messages:[...(c.messages??[]),tmpA]}))
     else setMsgs(p=>[...p,tmpA])
     try {
-      const tk=token||ANON
-      const d=await callEdge('quiz',{topic:quizTopic,language:'Czech'},tk)
+      const d=await callEdge('quiz',{topic:quizTopic,language:'Czech'},token||ANON)
       const aMsg={id:uid(),role:'assistant',type:'quiz',content:'🎓 Kvíz',_quizData:d,created_at:new Date().toISOString()}
       if(isLocal) setConvs(p=>p.map(c=>c.id!==convId?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       else{await saveDbMsg(convId,'user',tmpA.content,'text',null);await saveDbMsg(convId,'assistant',JSON.stringify(d),'text',null);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpA,_tmp:false},aMsg])}
@@ -570,7 +619,9 @@ export default function Chat({ session }) {
   },[input,atts,loading,activeConv,msgs,isLoggedIn,imgMode,sysPmt,thinking,memory,token]) // eslint-disable-line
 
   const onKey=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
-  const displayMsgs=activeConv?.local?(activeConv.messages??[]):msgs
+  const displayMsgs=showStarred
+    ?(activeConv?.local?(activeConv.messages??[]):msgs).filter(m=>starredMsgs.has(m.id))
+    :(activeConv?.local?(activeConv.messages??[]):msgs)
   const canSend=(input.trim()||atts.length>0)&&!loading
   const userInitial=session?(session.user.user_metadata?.full_name||session.user.email||'U')[0].toUpperCase():'?'
 
@@ -582,7 +633,7 @@ export default function Chat({ session }) {
 
   const modeColor=imgMode==='generate_image'?t.purple:t.accent
   const loadingTxt={chat:null,image_search:'🔍 Hledám fotografie…',generate_image:'🎨 Generuji obrázek…'}
-  const placeholders={chat:thinking?'💭 Hluboké přemýšlení (Enter = odeslat)':'Napište zprávu… (Enter = odeslat)',image_search:'🔍 Popište co hledáte…',generate_image:'🎨 Popište obrázek…'}
+  const placeholders={chat:thinking?'💭 Hluboké přemýšlení…':'Napište zprávu… (Enter = odeslat)',image_search:'🔍 Popište co hledáte…',generate_image:'🎨 Popište obrázek…'}
 
   return (
     <div style={{display:'flex',height:'100dvh',overflow:'hidden',background:t.bg,color:t.txt,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
@@ -594,6 +645,7 @@ export default function Chat({ session }) {
         button{cursor:pointer;border:none;background:none;font-family:inherit}
         @keyframes fu{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pu{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+        @keyframes live-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
         .fi{animation:fu .2s ease both}
         .dot span{display:inline-block;width:6px;height:6px;border-radius:50%;background:${t.accent};margin:0 2px;animation:pu 1.2s infinite ease-in-out}
         .dot span:nth-child(2){animation-delay:.18s}.dot span:nth-child(3){animation-delay:.36s}
@@ -639,7 +691,7 @@ export default function Chat({ session }) {
             {dbLoading?<div style={{padding:16,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
               :convs.map(c=>(
                 <div key={c.id} className="cr" onClick={()=>selectConv(c.id)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,transition:'background .1s',background:c.id===activeId?t.active:'transparent',borderLeft:c.id===activeId?`2px solid ${t.accent}`:'2px solid transparent'}}>
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,transition:'background .1s',background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`}}>
                   {editingId===c.id?(
                     <form onSubmit={e=>{e.preventDefault();renameConv(c.id,editTitle)}} style={{flex:1}} onClick={e=>e.stopPropagation()}>
                       <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus
@@ -652,6 +704,13 @@ export default function Chat({ session }) {
                     </div>
                   )}
                   <div className="cr-act" style={{display:'flex',gap:2,opacity:0,transition:'opacity .15s',flexShrink:0}}>
+                    {/* Color picker */}
+                    <div style={{display:'flex',gap:2}}>
+                      {CONV_COLORS.slice(1,4).map(col=>(
+                        <button key={col} onClick={e=>{e.stopPropagation();setConvColor(c.id,col)}}
+                          style={{width:10,height:10,borderRadius:'50%',background:col,border:`1px solid ${t.border}`,cursor:'pointer'}}/>
+                      ))}
+                    </div>
                     <button className="ib" onClick={e=>{e.stopPropagation();setEditingId(c.id);setEditTitle(c.title)}} style={{color:t.muted,display:'flex',padding:4,borderRadius:5}}>{Ic.edit}</button>
                     <button className="ib" onClick={e=>delConv(c.id,e)} style={{color:t.muted,display:'flex',padding:4,borderRadius:5}}>{Ic.trash}</button>
                   </div>
@@ -688,8 +747,18 @@ export default function Chat({ session }) {
             <span style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{activeConv?.title||'AI Asistent'}</span>
           </div>
           <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
+            {/* Starred toggle */}
+            <button className="ib" onClick={()=>setShowStarred(s=>!s)} style={{display:'flex',padding:'5px 9px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}} title="Oblíbené zprávy">
+              {showStarred?Ic.starFill:Ic.star}
+            </button>
+            {/* Export */}
+            <button className="ib" onClick={exportChat} style={{display:'flex',padding:'5px 9px',borderRadius:7,background:t.btn,color:t.muted}} title="Export chatu">{Ic.export}</button>
+            {/* Markdown toggle */}
+            <button className="ib" onClick={()=>setMarkdownMode(m=>!m)} style={{display:'flex',alignItems:'center',gap:3,padding:'5px 9px',borderRadius:7,background:markdownMode?t.accent+'22':t.btn,color:markdownMode?t.accent:t.muted,border:`1px solid ${markdownMode?t.accent:t.border}`,fontSize:11}} title="Markdown formátování">
+              MD
+            </button>
             {isLoggedIn&&(
-              <button className="ib" onClick={()=>setThinking(x=>!x)} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 9px',borderRadius:7,background:thinking?t.purple+'33':t.btn,color:thinking?t.purple:t.muted,border:`1px solid ${thinking?t.purple:t.border}`,fontSize:11}} title="Hluboké přemýšlení">
+              <button className="ib" onClick={()=>setThinking(x=>!x)} style={{display:'flex',alignItems:'center',gap:3,padding:'5px 9px',borderRadius:7,background:thinking?t.purple+'33':t.btn,color:thinking?t.purple:t.muted,border:`1px solid ${thinking?t.purple:t.border}`,fontSize:11}} title="Hluboké přemýšlení">
                 {Ic.brain}{thinking&&' ON'}
               </button>
             )}
@@ -701,6 +770,7 @@ export default function Chat({ session }) {
           </div>
         </header>
 
+        {/* Emotion bar */}
         {emotion&&emotion.emotion!=='neutral'&&(
           <div style={{padding:'7px 14px',background:t.tag,borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:12}}>
             <span style={{color:t.muted}}>{EMOTION_EMOJI[emotion.emotion]} <strong style={{color:t.txt}}>{emotion.emotion}</strong> · {emotion.suggestion}</span>
@@ -708,6 +778,7 @@ export default function Chat({ session }) {
           </div>
         )}
 
+        {/* Explain bar */}
         {explainTxt&&(
           <div style={{padding:'10px 14px',background:t.purple+'18',borderBottom:`1px solid ${t.purple}44`,display:'flex',alignItems:'flex-start',gap:8,fontSize:13}}>
             <span style={{color:t.purple,flexShrink:0,marginTop:1}}>{Ic.explain}</span>
@@ -716,34 +787,50 @@ export default function Chat({ session }) {
           </div>
         )}
 
+        {/* Starred banner */}
+        {showStarred&&(
+          <div style={{padding:'7px 14px',background:'#f59e0b22',borderBottom:`1px solid #f59e0b44`,display:'flex',alignItems:'center',gap:8,fontSize:12}}>
+            <span style={{color:'#f59e0b'}}>⭐</span>
+            <span style={{color:t.txt}}>Zobrazuji oblíbené zprávy ({displayMsgs.length})</span>
+            <button onClick={()=>setShowStarred(false)} style={{color:t.muted,display:'flex',padding:3,marginLeft:'auto'}}>{Ic.x}</button>
+          </div>
+        )}
+
         {/* Messages */}
         <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12}}>
           {displayMsgs.length===0&&!loading&&(
             <div style={{textAlign:'center',marginTop:'7vh',padding:'0 16px'}}>
               <div style={{width:52,height:52,borderRadius:14,background:t.accent+'22',border:`1.5px solid ${t.accent}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,margin:'0 auto 14px',color:t.accent}}>✦</div>
-              <div style={{fontSize:20,fontWeight:600,marginBottom:6}}>Jak Vám mohu pomoci?</div>
-              <div style={{fontSize:13,color:t.muted,marginBottom:18}}>
-                {isLoggedIn?'Chat · Imagen · Fotografie · Kvízy · Hlasový vstup':'Začněte psát — přihlášení není potřeba'}
+              <div style={{fontSize:20,fontWeight:600,marginBottom:6}}>
+                {showStarred?'Žádné oblíbené zprávy':'Jak Vám mohu pomoci?'}
               </div>
-              <div style={{display:'flex',gap:7,justifyContent:'center',flexWrap:'wrap',maxWidth:500,margin:'0 auto'}}>
-                {(isLoggedIn
-                  ?['Jak funguje kvantové počítání?','Najdi mi fotky Prahy','Vygeneruj obrázek lesa','Kvíz o historii']
-                  :['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']
-                ).map(hint=>(
-                  <button key={hint} onClick={()=>setInput(hint)}
-                    style={{padding:'7px 13px',borderRadius:20,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:12,transition:'all .15s'}}
-                    onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt}}
-                    onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted}}>
-                    {hint}
-                  </button>
-                ))}
-              </div>
+              {!showStarred&&(
+                <>
+                  <div style={{fontSize:13,color:t.muted,marginBottom:18}}>
+                    {isLoggedIn?'Chat · Imagen · Fotografie · Kvízy · Live AI · Hlasový vstup':'Začněte psát — přihlášení není potřeba'}
+                  </div>
+                  <div style={{display:'flex',gap:7,justifyContent:'center',flexWrap:'wrap',maxWidth:500,margin:'0 auto'}}>
+                    {(isLoggedIn
+                      ?['Jak funguje kvantové počítání?','Najdi mi fotky Prahy','Vygeneruj obrázek lesa','Kvíz o historii']
+                      :['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']
+                    ).map(hint=>(
+                      <button key={hint} onClick={()=>setInput(hint)}
+                        style={{padding:'7px 13px',borderRadius:20,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:12,transition:'all .15s'}}
+                        onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt}}
+                        onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted}}>
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {displayMsgs.map(msg=>{
             const m=getImgData(msg)
             const isWide=['image_search','generated_image','quiz'].includes(msg.type)
+            const isStarred=starredMsgs.has(msg.id)
             return (
               <div key={msg.id} className="fi" style={{display:'flex',gap:8,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
                 {msg.role==='assistant'&&<div style={{width:28,height:28,borderRadius:8,background:t.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff',flexShrink:0,marginTop:2}}>A</div>}
@@ -770,12 +857,18 @@ export default function Chat({ session }) {
                     <QuizCard data={m._quizData||(()=>{try{return JSON.parse(msg.content)}catch{return null}})()} t={t}/>
                   ):(
                     <div>
-                      <div style={{padding:'10px 14px',background:msg.role==='user'?t.accent:t.aiB,color:msg.role==='user'?'#fff':t.txt,borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',border:msg.role==='assistant'?`1px solid ${t.border}`:'none',opacity:msg._tmp?0.7:1}}>
-                        <div style={{fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{msg.content}</div>
-                        <div style={{fontSize:10,color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted,marginTop:4,textAlign:'right'}}>{fmtTime(msg.created_at)}</div>
+                      <div style={{padding:'10px 14px',background:msg.role==='user'?t.accent:t.aiB,color:msg.role==='user'?'#fff':t.txt,borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',border:msg.role==='assistant'?`1px solid ${isStarred?'#f59e0b':t.border}`:'none',opacity:msg._tmp?0.7:1,boxShadow:isStarred&&msg.role==='assistant'?'0 0 0 1px #f59e0b22':undefined}}>
+                        {markdownMode&&msg.role==='assistant'
+                          ?<div style={{fontSize:14,lineHeight:1.65,wordBreak:'break-word'}} dangerouslySetInnerHTML={{__html:renderMarkdown(msg.content)}}/>
+                          :<div style={{fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{msg.content}</div>
+                        }
+                        <div style={{fontSize:10,color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted,marginTop:4,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}}>
+                          {isStarred&&<span style={{color:'#f59e0b'}}>⭐</span>}
+                          {fmtTime(msg.created_at)}
+                        </div>
                       </div>
                       {msg.role==='assistant'&&!msg._tmp&&(
-                        <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory}/>
+                        <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory} onStar={starMsg} starred={isStarred}/>
                       )}
                     </div>
                   )}
@@ -804,11 +897,16 @@ export default function Chat({ session }) {
         <div style={{padding:'8px 12px 12px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
           {isLoggedIn&&(
             <div style={{display:'flex',gap:5,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
+              {/* Live button — pulsing */}
+              <button onClick={()=>setShowLive(true)}
+                style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,fontSize:12,fontWeight:600,background:'#ef4444',color:'#fff',border:'none',animation:'live-pulse 2s infinite',transition:'all .15s'}}>
+                {Ic.live} 🔴 Live
+              </button>
               <button onClick={()=>setImgMode(m=>m==='generate_image'?'chat':'generate_image')} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,fontSize:12,fontWeight:imgMode==='generate_image'?600:400,background:imgMode==='generate_image'?t.purple:t.btn,color:imgMode==='generate_image'?'#fff':t.muted,border:`1px solid ${imgMode==='generate_image'?t.purple:t.border}`,transition:'all .15s'}}>
-                {Ic.magic}{imgMode==='generate_image'?'🎨 Imagen':'Generovat obrázek'}
+                {Ic.magic}{imgMode==='generate_image'?'🎨 Imagen':'Generovat'}
               </button>
               <button onClick={()=>setImgMode(m=>m==='image_search'?'chat':'image_search')} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,fontSize:12,fontWeight:imgMode==='image_search'?600:400,background:imgMode==='image_search'?t.accent:t.btn,color:imgMode==='image_search'?'#fff':t.muted,border:`1px solid ${imgMode==='image_search'?t.accent:t.border}`,transition:'all .15s'}}>
-                {Ic.imgSrch}{imgMode==='image_search'?'🔍 Hledání':'Hledat fotky'}
+                {Ic.imgSrch}{imgMode==='image_search'?'🔍 Hledání':'Fotky'}
               </button>
               <button onClick={()=>setQuizMode(m=>!m)} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,fontSize:12,fontWeight:quizMode?600:400,background:quizMode?'#f59e0b':t.btn,color:quizMode?'#fff':t.muted,border:`1px solid ${quizMode?'#f59e0b':t.border}`,transition:'all .15s'}}>
                 {Ic.quiz}{quizMode?'🎓 Kvíz':'Kvíz'}
@@ -853,13 +951,14 @@ export default function Chat({ session }) {
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.docx" style={{display:'none'}} onChange={onFile}/>
           <div style={{fontSize:10,color:t.muted,textAlign:'center',marginTop:5}}>
-            Gemini AI · Imagen · Unsplash{isLoggedIn?' · Paměť + Historie v Supabase':' · Přihlaste se pro plné funkce'}
+            Gemini AI · Imagen · Unsplash{isLoggedIn?' · Paměť + Historie':' · Přihlaste se pro plné funkce'}
           </div>
         </div>
       </main>
 
       {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} dark={themeName!=='light'}/>}
       {showSet&&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory}/>}
+      {showLive&&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
     </div>
   )
 }
