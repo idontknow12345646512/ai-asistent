@@ -63,12 +63,20 @@ function CookieBanner({ t, onAccept }) {
   )
 }
 
-// ── Aurora beam — unikátní vizuální efekt ────────────────────────────────────
+// ── Aurora beam — ambientní světelný efekt ──────────────────────────────────
 function AuroraBeam({ t }) {
   return (
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:0}}>
-      <div style={{position:'absolute',top:'-20%',left:'50%',transform:'translateX(-50%)',width:'70%',height:'60%',background:`radial-gradient(ellipse at center, ${t.gradA}18 0%, ${t.gradB}10 40%, transparent 70%)`,animation:'auroraFloat 8s ease-in-out infinite',borderRadius:'50%',filter:'blur(40px)'}}/>
-      <div style={{position:'absolute',top:'10%',left:'20%',width:'30%',height:'40%',background:`radial-gradient(ellipse at center, ${t.gradB}10 0%, transparent 70%)`,animation:'auroraFloat 11s ease-in-out infinite reverse',borderRadius:'50%',filter:'blur(50px)'}}/>
+      {/* Hlavní záře */}
+      <div style={{position:'absolute',top:'-15%',left:'50%',transform:'translateX(-50%)',width:'75%',height:'65%',background:`radial-gradient(ellipse at center, ${t.gradA}20 0%, ${t.gradB}12 40%, transparent 70%)`,animation:'auroraFloat 9s ease-in-out infinite',borderRadius:'50%',filter:'blur(48px)'}}/>
+      {/* Sekundární záře vlevo */}
+      <div style={{position:'absolute',top:'5%',left:'10%',width:'35%',height:'45%',background:`radial-gradient(ellipse at center, ${t.gradB}12 0%, transparent 70%)`,animation:'auroraFloat2 13s ease-in-out infinite',borderRadius:'50%',filter:'blur(56px)'}}/>
+      {/* Sekundární záře vpravo */}
+      <div style={{position:'absolute',top:'15%',right:'8%',width:'28%',height:'35%',background:`radial-gradient(ellipse at center, ${t.gradA}10 0%, transparent 70%)`,animation:'auroraFloat2 11s ease-in-out infinite reverse',borderRadius:'50%',filter:'blur(44px)'}}/>
+      {/* Jemné hvězdičky */}
+      {[...Array(6)].map((_,i)=>(
+        <div key={i} style={{position:'absolute',width:2,height:2,borderRadius:'50%',background:t.gradA,opacity:.4,top:`${15+i*12}%`,left:`${20+i*11}%`,animation:`auroraFloat2 ${6+i*1.5}s ease-in-out infinite`,animationDelay:`${i*0.8}s`}}/>
+      ))}
     </div>
   )
 }
@@ -137,23 +145,54 @@ function ImgGrid({ images, query, t }) {
 // ── Generated image ───────────────────────────────────────────────────────────
 function GenImg({ imageData, mimeType, prompt, modelId, t }) {
   const [loaded, setLoaded] = useState(false)
+  const [progress, setProgress] = useState(0)
   const src       = `data:${mimeType||'image/jpeg'};base64,${imageData}`
   const modelName = IMG_MODELS.find(m=>m.id===modelId)?.name || 'Pollinations'
   const dl = () => { const a=document.createElement('a');a.href=src;a.download=`lumi-${Date.now()}.jpg`;a.click() }
+
+  // Fake progress bar pro loading feel
+  useEffect(()=>{
+    if(loaded) return
+    setProgress(0)
+    const id=setInterval(()=>setProgress(p=>p>=85?85:p+Math.random()*8),400)
+    return()=>clearInterval(id)
+  },[loaded])
+  useEffect(()=>{ if(loaded) setProgress(100) },[loaded])
+
   return (
     <div>
       <div style={{fontSize:12,color:t.muted,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
         {Ic.magic} Pollinations.ai · <strong style={{color:t.purple}}>{modelName}</strong>
       </div>
-      <div style={{position:'relative',display:'inline-block',maxWidth:'100%'}}>
-        {!loaded && <div style={{width:320,height:320,borderRadius:12,background:t.btn,display:'flex',alignItems:'center',justifyContent:'center',color:t.muted,fontSize:13}}><div className="dot"><span/><span/><span/></div></div>}
+      {!loaded&&(
+        <div style={{width:320,maxWidth:'100%',borderRadius:12,overflow:'hidden',border:`1px solid ${t.border}`}}>
+          {/* Shimmer skeleton */}
+          <div className="shimmer" style={{height:280,borderRadius:'12px 12px 0 0'}}/>
+          {/* Progress bar */}
+          <div style={{height:3,background:t.btn}}>
+            <div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${progress}%`,transition:'width .4s ease',borderRadius:2}}/>
+          </div>
+          <div style={{padding:'8px 12px',display:'flex',alignItems:'center',gap:8}}>
+            <div style={{display:'flex',gap:3}}>
+              {[0,1,2].map(i=>(
+                <div key={i} style={{width:5,height:5,borderRadius:'50%',background:t.gradA,opacity:.6,animation:`pu 1.4s infinite ease-in-out`,animationDelay:`${i*0.22}s`}}/>
+              ))}
+            </div>
+            <span style={{fontSize:11,color:t.muted,animation:'progressPulse 1.5s infinite'}}>Generuji obrázek…</span>
+          </div>
+        </div>
+      )}
+      <div style={{position:'relative',display:loaded?'inline-block':'none',maxWidth:'100%'}}>
         <img src={src} alt={prompt} onLoad={()=>setLoaded(true)}
-          style={{maxWidth:'100%',maxHeight:440,borderRadius:12,display:loaded?'block':'none',border:`1px solid ${t.border}`,animation:'imgReveal .5s cubic-bezier(.34,1.06,.64,1)'}}/>
-        {loaded&&<button onClick={dl} style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:'rgba(0,0,0,.65)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',backdropFilter:'blur(4px)',fontFamily:'inherit'}}>
+          style={{maxWidth:'100%',maxHeight:460,borderRadius:12,display:'block',border:`1px solid ${t.border}`,animation:'imgReveal .6s cubic-bezier(.34,1.06,.64,1)'}}/>
+        <button onClick={dl}
+          style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:'rgba(0,0,0,.7)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',backdropFilter:'blur(6px)',fontFamily:'inherit',transition:'all .15s'}}
+          onMouseOver={e=>e.currentTarget.style.background='rgba(0,0,0,.9)'}
+          onMouseOut={e=>e.currentTarget.style.background='rgba(0,0,0,.7)'}>
           {Ic.dl} Stáhnout
-        </button>}
+        </button>
       </div>
-      {prompt&&<div style={{fontSize:11,color:t.muted,marginTop:6,fontStyle:'italic'}}>„{prompt}"</div>}
+      {prompt&&loaded&&<div style={{fontSize:11,color:t.muted,marginTop:6,fontStyle:'italic',lineHeight:1.4}}>„{prompt}"</div>}
     </div>
   )
 }
@@ -744,33 +783,77 @@ export default function Chat({ session }) {
   const phs={chat:thinking?'💭 Deep Thinking…':'Napište zprávu… (Enter = odeslat)',image_search:'🔍 Popište co hledáte…',generate_image:'🎨 Popište obrázek…'}
 
   const css=`
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0}
-    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrl};border-radius:2px}
+    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrl};border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:${t.accent}66}
     textarea,input{font-family:inherit}textarea{resize:none;outline:none;border:none;background:transparent}input{outline:none;border:none;background:transparent}button{cursor:pointer;border:none;background:none;font-family:inherit}
+
+    /* ── Core animations ── */
     @keyframes slideUp{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    @keyframes fadeInScale{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
-    @keyframes dropIn{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes imgReveal{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
-    @keyframes sparkleIn{from{opacity:0;transform:translateY(6px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes checkIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+    @keyframes fadeInScale{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+    @keyframes dropIn{from{opacity:0;transform:translateY(10px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes imgReveal{from{opacity:0;filter:blur(8px);transform:scale(.96)}to{opacity:1;filter:blur(0);transform:scale(1)}}
+    @keyframes sparkleIn{from{opacity:0;transform:translateY(8px) scale(.85)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes checkIn{from{opacity:0;transform:scale(.3) rotate(-20deg)}to{opacity:1;transform:scale(1) rotate(0deg)}}
     @keyframes slideUpBanner{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
-    @keyframes auroraFloat{0%,100%{transform:translateX(-50%) scale(1) rotate(0deg)}50%{transform:translateX(-50%) scale(1.15) rotate(3deg)}}
-    @keyframes pu{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+
+    /* ── Aurora/ambient background ── */
+    @keyframes auroraFloat{0%,100%{transform:translateX(-50%) scale(1) rotate(0deg)}33%{transform:translateX(-52%) scale(1.12) rotate(2deg)}66%{transform:translateX(-48%) scale(1.08) rotate(-2deg)}}
+    @keyframes auroraFloat2{0%,100%{transform:scale(1) rotate(0deg);opacity:.6}50%{transform:scale(1.2) rotate(5deg);opacity:.9}}
+
+    /* ── Message animations ── */
+    @keyframes msgBounce{0%{opacity:0;transform:translateY(18px) scale(.93)}55%{transform:translateY(-4px) scale(1.015)}80%{transform:translateY(1px) scale(.998)}100%{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes msgSlideRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes msgSlideLeft{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+
+    /* ── Typing/loading ── */
+    @keyframes pu{0%,100%{opacity:.15;transform:scale(.7) translateY(2px)}50%{opacity:1;transform:scale(1) translateY(0)}}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-    @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
-    @keyframes thinkPulse{0%,100%{opacity:.5}50%{opacity:1}}
-    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-    @keyframes msgBounce{0%{opacity:0;transform:translateY(16px) scale(.95)}60%{transform:translateY(-3px) scale(1.01)}100%{opacity:1;transform:translateY(0) scale(1)}}
-    .msg-new{animation:msgBounce .5s cubic-bezier(.34,1.56,.64,1) both}
-    .msg-old{animation:fadeIn .22s ease both}
-    .dot span{display:inline-block;width:6px;height:6px;border-radius:50%;background:${t.accent};margin:0 2px;animation:pu 1.2s infinite ease-in-out}
-    .dot span:nth-child(2){animation-delay:.18s}.dot span:nth-child(3){animation-delay:.36s}
+    @keyframes thinkPulse{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1)}}
+    @keyframes thinkSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+    /* ── Button/UI animations ── */
+    @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)}70%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+    @keyframes sendPop{0%{transform:scale(1)}30%{transform:scale(.88)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
+    @keyframes starPop{0%{transform:scale(1)}40%{transform:scale(1.4) rotate(15deg)}100%{transform:scale(1) rotate(0deg)}}
+    @keyframes ripple{from{transform:scale(0);opacity:.6}to{transform:scale(3);opacity:0}}
+
+    /* ── Welcome screen ── */
+    @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes hintAppear{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    /* ── Sidebar ── */
+    @keyframes convAppear{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+
+    /* ── Image generation progress ── */
+    @keyframes progressPulse{0%,100%{opacity:.4}50%{opacity:1}}
+    @keyframes shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
+
+    /* ── Class applications ── */
+    .msg-new-ai{animation:msgBounce .55s cubic-bezier(.34,1.56,.64,1) both}
+    .msg-new-user{animation:msgSlideRight .35s cubic-bezier(.34,1.56,.64,1) both}
+    .msg-old{animation:fadeIn .2s ease both}
+    .dot span{display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.accent};margin:0 2.5px;animation:pu 1.4s infinite ease-in-out}
+    .dot span:nth-child(2){animation-delay:.22s}.dot span:nth-child(3){animation-delay:.44s}
     .cr:hover{background:${t.active}!important}.cr:hover .cr-act{opacity:1!important}
+    .cr{transition:background .12s ease,border-left-color .15s ease}
     .ib:hover{opacity:.65}
-    .err-shake{animation:shake .4s ease}
-    @media(max-width:768px){.sidebar{position:fixed!important;top:0;left:0;bottom:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,.5)}.sov{display:block!important}}
+    .ib{transition:opacity .15s}
+    .err-shake{animation:shake .5s ease}
+    .hint-btn{animation:hintAppear .4s ease both}
+    .hint-btn:nth-child(1){animation-delay:.05s}
+    .hint-btn:nth-child(2){animation-delay:.1s}
+    .hint-btn:nth-child(3){animation-delay:.15s}
+    .hint-btn:nth-child(4){animation-delay:.2s}
+    .conv-item{animation:convAppear .25s ease both}
+    .send-active{animation:sendPop .25s ease}
+    .star-active{animation:starPop .35s cubic-bezier(.34,1.56,.64,1)}
+    .shimmer{background:linear-gradient(90deg,${t.btn} 25%,${t.active} 50%,${t.btn} 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+
+    @media(max-width:768px){.sidebar{position:fixed!important;top:0;left:0;bottom:0;z-index:30;box-shadow:4px 0 32px rgba(0,0,0,.6)}.sov{display:block!important}}
   `
 
   return (
@@ -826,9 +909,9 @@ export default function Chat({ session }) {
 
           <div style={{flex:1,overflowY:'auto',padding:'5px'}}>
             {dbLoad?<div style={{padding:16,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
-              :convs.map(c=>(
-                <div key={c.id} className="cr" onClick={()=>selectConv(c.id)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,transition:'background .12s',background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`}}>
+              :convs.map((c,ci)=>(
+                <div key={c.id} className="cr conv-item" onClick={()=>selectConv(c.id)}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,transition:'background .12s',background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`,animationDelay:`${Math.min(ci*0.035,0.25)}s`}}>
                   {editId===c.id?(
                     <form onSubmit={e=>{e.preventDefault();renameConv(c.id,editTitle)}} style={{flex:1}} onClick={e=>e.stopPropagation()}>
                       <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus
@@ -944,7 +1027,7 @@ export default function Chat({ session }) {
             <div style={{textAlign:'center',marginTop:'7vh',padding:'0 16px',animation:'fadeIn .5s ease',position:'relative'}}>
               <AuroraBeam t={t}/>
               <div style={{position:'relative',zIndex:1}}>
-                <div style={{display:'flex',justifyContent:'center',marginBottom:16}}>
+                <div style={{display:'flex',justifyContent:'center',marginBottom:16,animation:'welcomeFloat 4s ease-in-out infinite'}}>
                   <LumiAvatar size={64} gradient={[t.gradA,t.gradB]}/>
                 </div>
                 <div style={{fontSize:23,fontWeight:700,marginBottom:8,color:t.txt}}>
@@ -957,10 +1040,10 @@ export default function Chat({ session }) {
                     </div>
                     <div style={{display:'flex',gap:7,justifyContent:'center',flexWrap:'wrap',maxWidth:520,margin:'0 auto'}}>
                       {(isLoggedIn?['Jak funguje kvantové počítání?','Najdi fotky Prahy','Vygeneruj: forest at sunset','Kvíz o historii ČR']:['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']).map(hint=>(
-                        <button key={hint} onClick={()=>setInput(hint)}
+                        <button key={hint} onClick={()=>setInput(hint)} className="hint-btn"
                           style={{padding:'7px 14px',borderRadius:20,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:12,transition:'all .25s cubic-bezier(.34,1.56,.64,1)',cursor:'pointer'}}
-                          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt;e.currentTarget.style.transform='translateY(-2px) scale(1.02)'}}
-                          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.transform='translateY(0) scale(1)'}}>
+                          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt;e.currentTarget.style.transform='translateY(-3px) scale(1.03)';e.currentTarget.style.boxShadow=`0 6px 20px ${t.accent}30`}}
+                          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.transform='translateY(0) scale(1)';e.currentTarget.style.boxShadow='none'}}>
                           {hint}
                         </button>
                       ))}
@@ -974,8 +1057,9 @@ export default function Chat({ session }) {
           {displayMsgs.map(msg=>{
             const m=getImgData(msg),isWide=['image_search','generated_image','quiz'].includes(msg.type)
             const isStar=starred.has(msg.id),isNew=newIds.has(msg.id),isTyp=typingIds.has(msg.id)
+            const animCls=isNew?(msg.role==='user'?'msg-new-user':'msg-new-ai'):'msg-old'
             return (
-              <div key={msg.id} className={isNew?'msg-new':'msg-old'}
+              <div key={msg.id} className={animCls}
                 style={{display:'flex',gap:8,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
                 {msg.role==='assistant'&&<LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>}
                 <div style={{maxWidth:isWide?'94%':'80%',minWidth:40}}>
@@ -1026,13 +1110,26 @@ export default function Chat({ session }) {
           })}
 
           {loading&&(
-            <div style={{display:'flex',gap:8,alignItems:'flex-start',animation:'fadeIn .2s ease'}}>
+            <div style={{display:'flex',gap:8,alignItems:'flex-start',animation:'fadeIn .25s ease'}} className="msg-new-ai">
               <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
-              <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
-                {imgMode==='generate_image'?<span style={{fontSize:13,color:t.muted}}>🎨 Lumi generuje obrázek (30–90 s)…</span>
-                  :imgMode==='image_search'?<span style={{fontSize:13,color:t.muted}}>🔍 Hledám fotografie…</span>
-                  :thinking?<span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>💭 Lumi přemýšlí…</span>
-                  :<div className="dot"><span/><span/><span/></div>}
+              <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:80}}>
+                {imgMode==='generate_image'
+                  ? <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/>
+                      <span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span>
+                    </div>
+                  : imgMode==='image_search'
+                    ? <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/>
+                        <span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span>
+                      </div>
+                    : thinking
+                      ? <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/>
+                          <span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span>
+                        </div>
+                      : <div className="dot"><span/><span/><span/></div>
+                }
               </div>
             </div>
           )}
@@ -1185,7 +1282,9 @@ export default function Chat({ session }) {
               <VoiceBtn t={t} compact onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
               <button className="ib" onClick={()=>fileRef.current.click()} style={{color:t.muted,display:'flex',padding:5}} title="Přidat soubor">{Ic.clip}</button>
               <button onClick={send} disabled={!canSend}
-                style={{width:34,height:34,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',transform:canSend?'scale(1)':'scale(.95)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default'}}>
+                style={{width:34,height:34,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',transform:canSend?'scale(1)':'scale(.92)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 4px 14px ${imgMode==='generate_image'||thinking?t.purple:t.accent}44`:'none'}}
+                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.1)'}}
+                onMouseOut={e=>{if(canSend)e.currentTarget.style.transform='scale(1)'}}>
                 {Ic.send}
               </button>
             </div>

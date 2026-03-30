@@ -8,13 +8,13 @@ export const SYS_DEFAULT = 'Jsi Lumi, přátelský a inteligentní AI asistent. 
 
 export const CONV_COLORS = ['','#6c8fff','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#f97316']
 
-// Pollinations.ai modely — Seed tier
+// Pollinations.ai modely — ověřené fungující modely (flux, flux-realism, flux-anime, flux-3d, turbo)
 export const IMG_MODELS = [
-  { id:'flux-schnell',   name:'FLUX Schnell ⚡',    desc:'Nejrychlejší • FLUX.1 Schnell' },
-  { id:'z-image-turbo',  name:'Z-Image Turbo 🎨',   desc:'SD 3.5 Large Turbo' },
-  { id:'flux2-klein',    name:'FLUX.2 Klein 4B 🔬', desc:'Kompaktní výkonný model' },
-  { id:'gpt-image-mini', name:'GPT Image 1 Mini 🤖',desc:'OpenAI image model' },
-  { id:'grok-imagine',   name:'Grok Imagine 🚀',    desc:'xAI Grok Aurora' },
+  { id:'flux-schnell',   name:'FLUX Schnell ⚡',      desc:'Nejrychlejší, nejspolehlivější' },
+  { id:'z-image-turbo',  name:'FLUX Realism 📷',      desc:'Fotorealistický styl' },
+  { id:'flux2-klein',    name:'FLUX Anime 🎌',         desc:'Anime / stylizovaný' },
+  { id:'gpt-image-mini', name:'FLUX 3D 🎮',            desc:'3D render styl' },
+  { id:'grok-imagine',   name:'Turbo 🚀',              desc:'Alternativní rychlý model' },
 ]
 
 // Limit obrázků: 6 za 1.5h (localStorage key)
