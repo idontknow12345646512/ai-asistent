@@ -1,54 +1,55 @@
-// ── Lumi AI — constants, themes, icons ───────────────────────────────────────
+// ── Lumi AI — constants ───────────────────────────────────────────────────────
 
 export const EDGE = 'https://sjdvgkdvezzfazexzfrf.supabase.co/functions/v1/claude-chat'
 export const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqZHZna2R2ZXp6ZmF6ZXh6ZnJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTYyODIsImV4cCI6MjA4OTc5MjI4Mn0.ZkZ9jImrSZDHAkSnAWPGgwXXkXEu4YnJtUbeyX99eOg'
-export const APP_NAME = 'Lumi'
+export const APP_NAME    = 'Lumi'
 export const APP_TAGLINE = 'Váš inteligentní asistent'
 export const SYS_DEFAULT = 'Jsi Lumi, přátelský a inteligentní AI asistent. Odpovídáš přesně a věcně. Píšeš v češtině pokud uživatel nepíše jinak.'
 
 export const CONV_COLORS = ['','#6c8fff','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#f97316']
 
-// HuggingFace modely — vyžaduje HF_API_KEY (Read token)
+// Pollinations.ai modely — Seed tier
 export const IMG_MODELS = [
-  { id:'sd-3.5-turbo',  name:'SD 3.5 Turbo ⚡',   desc:'Nejnovější SD, rychlý' },
-  { id:'flux-dev',      name:'FLUX.1 Dev 🎨',      desc:'Vysoká kvalita' },
-  { id:'z-image-turbo', name:'Z-Image Turbo 🚀',   desc:'SD 3.5 Medium' },
-  { id:'dreamshaper-8', name:'DreamShaper 8 ✨',    desc:'Stylizovaný' },
-  { id:'openjourney',   name:'OpenJourney 🌌',     desc:'Midjourney styl' },
+  { id:'flux-schnell',   name:'FLUX Schnell ⚡',    desc:'Nejrychlejší • FLUX.1 Schnell' },
+  { id:'z-image-turbo',  name:'Z-Image Turbo 🎨',   desc:'SD 3.5 Large Turbo' },
+  { id:'flux2-klein',    name:'FLUX.2 Klein 4B 🔬', desc:'Kompaktní výkonný model' },
+  { id:'gpt-image-mini', name:'GPT Image 1 Mini 🤖',desc:'OpenAI image model' },
+  { id:'grok-imagine',   name:'Grok Imagine 🚀',    desc:'xAI Grok Aurora' },
 ]
 
-// AI Chat modely
+// Limit obrázků: 6 za 1.5h (localStorage key)
+export const IMG_LIMIT_COUNT  = 6
+export const IMG_LIMIT_WINDOW = 90 * 60 * 1000 // 90 minut v ms
+
 export const AI_MODELS = [
-  { id:'default',     name:'Gemini Auto',     short:'Auto',   desc:'Automaticky nejlepší (3.1 Flash Lite → ...)' },
-  { id:'gemma-3-12b', name:'Gemma 3 12B',     short:'G12B',   desc:'Open-source Google, rychlý' },
-  { id:'gemma-3-27b', name:'Gemma 3 27B',     short:'G27B',   desc:'Open-source Google, nejsilnější' },
+  { id:'default',     name:'Gemini Auto',     short:'Auto',  desc:'Automaticky nejlepší (3.1 Flash Lite → ...)' },
+  { id:'gemma-3-12b', name:'Gemma 3 12B',     short:'G12B',  desc:'Open-source Google, rychlý' },
+  { id:'gemma-3-27b', name:'Gemma 3 27B',     short:'G27B',  desc:'Open-source Google, nejsilnější' },
 ]
 
-// Personas
 export const PERSONAS = [
-  { label:'Lumi — výchozí',         val: SYS_DEFAULT },
-  { label:'Profesionální asistent',  val:'Jsi profesionální AI asistent. Odpovídáš formálně a přesně. Píšeš v češtině.' },
-  { label:'Přátelský pomocník',      val:'Jsi přátelský AI pomocník. Komunikuješ neformálně a s humorem. Píšeš v češtině.' },
-  { label:'Expert programátor',      val:'Jsi expert na programování. Odpovídáš přesně s kódovými příklady. Preferuješ stručnost.' },
-  { label:'Kreativní spisovatel',    val:'Jsi kreativní spisovatel. Pomáháš s texty, příběhy, básněmi a scénáři.' },
-  { label:'Lektor / učitel',         val:'Jsi trpělivý lektor. Vysvětluješ jednoduše s příklady. Přizpůsobuješ se tempu studenta.' },
-  { label:'Sokrates 🏛️',             val:'Jsi sokratovský filosof. Odpovídáš otázkami, vedeš dialog a pomáháš hledat pravdu.' },
-  { label:'Data analytik 📊',        val:'Jsi analytik dat. Pomáháš interpretovat data, tabulky a grafy. Preferuješ přesnost.' },
+  { label:'Lumi — výchozí',        val: SYS_DEFAULT },
+  { label:'Profesionální asistent', val:'Jsi profesionální AI asistent. Odpovídáš formálně a přesně.' },
+  { label:'Přátelský pomocník',     val:'Jsi přátelský AI pomocník. Komunikuješ neformálně a s humorem.' },
+  { label:'Expert programátor',     val:'Jsi expert na programování. Odpovídáš přesně s kódovými příklady.' },
+  { label:'Kreativní spisovatel',   val:'Jsi kreativní spisovatel. Pomáháš s texty, příběhy a básněmi.' },
+  { label:'Lektor / učitel',        val:'Jsi trpělivý lektor. Vysvětluješ jednoduše s příklady.' },
+  { label:'Sokrates 🏛️',            val:'Jsi sokratovský filosof. Odpovídáš otázkami a vedeš dialog.' },
+  { label:'Data analytik 📊',       val:'Jsi analytik dat. Pomáháš interpretovat data a grafy.' },
 ]
 
 export const QUIZ_COUNTS = [1, 3, 5, 10, 15, 20]
 export const QUIZ_DIFFS  = [['easy','🟢 Lehká'],['medium','🟡 Střední'],['hard','🔴 Těžká']]
 
-// Memory categories
 export const MEM_CATEGORIES = [
-  { id:'personal',  label:'👤 Osobní',     desc:'Jméno, věk, povolání…' },
-  { id:'prefs',     label:'❤️ Preference',  desc:'Co mám/nemám rád…' },
-  { id:'work',      label:'💼 Práce',        desc:'Projekty, firma…' },
-  { id:'general',   label:'📌 Obecné',      desc:'Cokoliv jiného' },
-  { id:'fact',      label:'📚 Fakt',         desc:'Důležitý fakt' },
+  { id:'personal', label:'👤 Osobní',    desc:'Jméno, věk, povolání…' },
+  { id:'prefs',    label:'❤️ Preference', desc:'Co mám/nemám rád…' },
+  { id:'work',     label:'💼 Práce',      desc:'Projekty, firma…' },
+  { id:'general',  label:'📌 Obecné',     desc:'Cokoliv jiného' },
+  { id:'fact',     label:'📚 Fakt',        desc:'Důležitý fakt' },
 ]
 
-// ── Themes (12 témat) ─────────────────────────────────────────────────────────
+// ── Themes (12) ───────────────────────────────────────────────────────────────
 export const THEMES = {
   dark:      { bg:'#0f1117', side:'#13161f', hdr:'rgba(15,17,23,.96)',   txt:'#e8eaf0', muted:'#5a6178', border:'#1e2230', accent:'#6c8fff', purple:'#a855f7', green:'#22c55e', active:'#1c2035', aiB:'#1a1d2a', inBg:'#13161f', iaBg:'#0f1117', inBrd:'#2a2f42', btn:'#1a1d2a', modal:'#13161f', pill:'#1a1d2a', ua:'#3d4460', scrl:'#2a2f42', card:'#1e2230', tag:'#1c2035', success:'rgba(34,197,94,.15)',  succ:'#68d391', danger:'#e53e3e',  gradA:'#6c8fff', gradB:'#a855f7', isDark:true  },
   light:     { bg:'#f4f6fb', side:'#ffffff', hdr:'rgba(244,246,251,.96)',txt:'#1a1d2a', muted:'#7a849a', border:'#e2e6f0', accent:'#4c6ef5', purple:'#9333ea', green:'#16a34a', active:'#eef1ff', aiB:'#ffffff', inBg:'#ffffff', iaBg:'#f4f6fb', inBrd:'#d8dde8', btn:'#edf0f7', modal:'#ffffff', pill:'#edf0f7', ua:'#8898b0', scrl:'#c8cdd8', card:'#edf0f7', tag:'#eef1ff', success:'rgba(22,163,74,.12)',   succ:'#276749', danger:'#dc2626',  gradA:'#4c6ef5', gradB:'#9333ea', isDark:false },
@@ -76,7 +77,7 @@ export const THEME_LIST = [
   {id:'slate',     label:'Slate',     icon:'⬛'},
   {id:'lavender',  label:'Lavender',  icon:'💜'},
   {id:'nord',      label:'Nord',      icon:'❄️'},
-  {id:'solarized', label:'Solarized', icon:'☀'},
+  {id:'solarized', label:'Solarized', icon:'🌞'},
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,7 +90,6 @@ export const fmtDate = ts => {
   if(d.toDateString()===y.toDateString()) return 'Včera'
   return d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})
 }
-// getFreshToken is defined in Chat.jsx to avoid circular imports
 export async function callEdge(mode, payload, token) {
   const res=await fetch(EDGE,{
     method:'POST',
@@ -110,10 +110,33 @@ export function detectAutoMode(text,imgMode) {
 }
 export const mkLocal=()=>({id:uid(),title:'Nová konverzace',messages:[],createdAt:Date.now(),local:true})
 
+// Rate limit helper — 6 obrázků za 90 minut
+export function checkImgRateLimit() {
+  const KEY='lumi_img_timestamps'
+  const now=Date.now()
+  const window=IMG_LIMIT_WINDOW
+  let times=[]
+  try{times=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}
+  times=times.filter(t=>now-t<window)
+  if(times.length>=IMG_LIMIT_COUNT){
+    const oldest=Math.min(...times)
+    const wait=Math.ceil((oldest+window-now)/60000)
+    return{ok:false,wait,remaining:0}
+  }
+  return{ok:true,remaining:IMG_LIMIT_COUNT-times.length}
+}
+export function recordImgUsage() {
+  const KEY='lumi_img_timestamps'
+  let times=[]
+  try{times=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}
+  times=[...times,Date.now()]
+  localStorage.setItem(KEY,JSON.stringify(times))
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 export function renderMD(text,isDark) {
   if(!text) return ''
-  const cb=isDark?'#0d1117':'#f6f8fa', cbrd=isDark?'#30363d':'#d0d7de'
+  const cb=isDark?'#0d1117':'#f6f8fa',cbrd=isDark?'#30363d':'#d0d7de'
   const ib=isDark?'rgba(110,118,129,0.2)':'rgba(175,184,193,0.2)'
   return text
     .replace(/```(\w*)\n?([\s\S]*?)```/g,(_,lang,code)=>{
@@ -122,8 +145,6 @@ export function renderMD(text,isDark) {
       return `<div style="margin:8px 0;border:1px solid ${cbrd};border-radius:${lang?'0 0 8px 8px':'8px'};overflow:hidden">${lbl}<pre style="margin:0;padding:12px;background:${cb};overflow-x:auto;font-family:'JetBrains Mono',Consolas,monospace;font-size:13px;line-height:1.6;color:${isDark?'#e6edf3':'#24292f'}">${esc.trimEnd()}</pre></div>`
     })
     .replace(/`([^`]+)`/g,`<code style="background:${ib};padding:2px 6px;border-radius:4px;font-size:12px;font-family:monospace;border:1px solid ${cbrd}">$1</code>`)
-    .replace(/\$\$([^$]+)\$\$/g,`<div style="text-align:center;padding:8px;font-style:italic;font-size:15px;margin:6px 0">$1</div>`)
-    .replace(/\$([^$\n]+)\$/g,`<span style="font-style:italic">$1</span>`)
     .replace(/^### (.+)$/gm,`<strong style="font-size:14px;display:block;margin:10px 0 4px;opacity:.9">$1</strong>`)
     .replace(/^## (.+)$/gm, `<strong style="font-size:16px;display:block;margin:12px 0 5px">$1</strong>`)
     .replace(/^# (.+)$/gm,  `<strong style="font-size:18px;display:block;margin:14px 0 6px">$1</strong>`)
@@ -155,6 +176,7 @@ export const Ic = {
   dl:      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
   edit:    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
   file:    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>,
+  pdf:     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
   mic:     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
   brain:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
   thumbUp: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>,
@@ -173,25 +195,22 @@ export const Ic = {
   model:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>,
   wand:    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>,
   addMem:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>,
-  pdf:     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
-  img:     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
-  pin:     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>,
+  cookie:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/></svg>,
+  spark:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>,
 }
 
-// ── Lumi Avatar SVG (Claude styl — jemný, čistý, přátelský) ──────────────────
+// ── Lumi Avatar (Claude-style SVG) ────────────────────────────────────────────
 export function LumiAvatar({ size=28, gradient=['#6c8fff','#a855f7'] }) {
-  const id = `lg-${gradient[0].slice(1)}`
+  const id=`lg-${Math.random().toString(36).slice(2,6)}`
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stopColor={gradient[0]}/>
-          <stop offset="1" stopColor={gradient[1]}/>
+          <stop stopColor={gradient[0]}/><stop offset="1" stopColor={gradient[1]}/>
         </linearGradient>
       </defs>
       <rect width="40" height="40" rx="12" fill={`url(#${id})`}/>
-      {/* Stylizované "L" / vlna / světelný symbol — Claude-like */}
-      <path d="M13 12 C13 12 13 20 13 24 C13 26.2 14.8 28 17 28 L27 28" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.95"/>
+      <path d="M13 12C13 12 13 20 13 24C13 26.2 14.8 28 17 28L27 28" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.95"/>
       <circle cx="26" cy="16" r="3.5" fill="white" opacity="0.9"/>
       <circle cx="20" cy="13" r="2" fill="white" opacity="0.6"/>
     </svg>
