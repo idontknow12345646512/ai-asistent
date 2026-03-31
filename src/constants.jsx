@@ -8,23 +8,20 @@ export const SYS_DEFAULT = 'Jsi Lumi, přátelský a inteligentní AI asistent. 
 
 export const CONV_COLORS = ['','#6c8fff','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#f97316']
 
-// Pollinations.ai modely — ověřené fungující modely (flux, flux-realism, flux-anime, flux-3d, turbo)
+// Pollinations.ai — 3 fungující modely (gen.pollinations.ai)
+// flux=1p, grok-imagine=20p, qwen-image=30p | Limit: 30p za 90 min
 export const IMG_MODELS = [
-  { id:'flux-schnell',   name:'FLUX Schnell ⚡',      desc:'Nejrychlejší, nejspolehlivější' },
-  { id:'z-image-turbo',  name:'FLUX Realism 📷',      desc:'Fotorealistický styl' },
-  { id:'flux2-klein',    name:'FLUX Anime 🎌',         desc:'Anime / stylizovaný' },
-  { id:'gpt-image-mini', name:'FLUX 3D 🎮',            desc:'3D render styl' },
-  { id:'grok-imagine',   name:'Turbo 🚀',              desc:'Alternativní rychlý model' },
+  { id:'flux',         name:'FLUX Schnell ⚡',  desc:'Nejrychlejší • 1 pollen', cost:1  },
+  { id:'grok-imagine', name:'Grok Imagine 🤖',  desc:'xAI Aurora • 20 pollen',  cost:20 },
+  { id:'qwen-image',   name:'Qwen Image+ 🎨',   desc:'Alibaba Qwen • 30 pollen', cost:30 },
 ]
-
-// Limit obrázků: 6 za 1.5h (localStorage key)
-export const IMG_LIMIT_COUNT  = 6
-export const IMG_LIMIT_WINDOW = 90 * 60 * 1000 // 90 minut v ms
+export const POLLEN_LIMIT  = 30
+export const POLLEN_WINDOW = 90  // minuty
 
 export const AI_MODELS = [
-  { id:'default',     name:'Gemini Auto',     short:'Auto',  desc:'Automaticky nejlepší (3.1 Flash Lite → ...)' },
-  { id:'gemma-3-12b', name:'Gemma 3 12B',     short:'G12B',  desc:'Open-source Google, rychlý' },
-  { id:'gemma-3-27b', name:'Gemma 3 27B',     short:'G27B',  desc:'Open-source Google, nejsilnější' },
+  { id:'default',     name:'Gemma 3 27B ✦',   short:'G27B',  desc:'Výchozí — open-source od Google, nejsilnější' },
+  { id:'gemma-3-12b', name:'Gemma 3 12B 🔶',  short:'G12B',  desc:'Rychlejší open-source Google model' },
+  { id:'gemini-auto', name:'Gemini Auto ⚡',   short:'Auto',  desc:'Automaticky nejlepší Gemini 3.1 Flash Lite' },
 ]
 
 export const PERSONAS = [
@@ -110,27 +107,13 @@ export function detectAutoMode(text,imgMode) {
 }
 export const mkLocal=()=>({id:uid(),title:'Nová konverzace',messages:[],createdAt:Date.now(),local:true})
 
-// Rate limit helper — 6 obrázků za 90 minut
-export function checkImgRateLimit() {
-  const KEY='lumi_img_timestamps'
-  const now=Date.now()
-  const window=IMG_LIMIT_WINDOW
-  let times=[]
-  try{times=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}
-  times=times.filter(t=>now-t<window)
-  if(times.length>=IMG_LIMIT_COUNT){
-    const oldest=Math.min(...times)
-    const wait=Math.ceil((oldest+window-now)/60000)
-    return{ok:false,wait,remaining:0}
-  }
-  return{ok:true,remaining:IMG_LIMIT_COUNT-times.length}
+// Pollen cache — ukládá výsledek ze serveru lokálně
+export function getLocalPollenInfo() {
+  try{const d=JSON.parse(localStorage.getItem('lumi_pollen')||'{}');return{spent:d.spent||0,remaining:d.remaining??POLLEN_LIMIT,ts:d.ts||0}}
+  catch{return{spent:0,remaining:POLLEN_LIMIT,ts:0}}
 }
-export function recordImgUsage() {
-  const KEY='lumi_img_timestamps'
-  let times=[]
-  try{times=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}
-  times=[...times,Date.now()]
-  localStorage.setItem(KEY,JSON.stringify(times))
+export function setLocalPollenInfo(spent, remaining) {
+  localStorage.setItem('lumi_pollen',JSON.stringify({spent,remaining,ts:Date.now()}))
 }
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────

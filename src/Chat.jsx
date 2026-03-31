@@ -3,11 +3,11 @@ import { supabase } from './supabase'
 import AuthModal from './AuthModal'
 import LiveModal from './LiveModal'
 import {
-  EDGE, ANON, APP_NAME, SYS_DEFAULT,
+  ANON, APP_NAME, SYS_DEFAULT,
   CONV_COLORS, IMG_MODELS, AI_MODELS, PERSONAS, QUIZ_COUNTS, QUIZ_DIFFS, MEM_CATEGORIES,
-  THEMES, THEME_LIST, Ic, LumiAvatar,
+  THEMES, THEME_LIST, Ic, LumiAvatar, POLLEN_LIMIT, POLLEN_WINDOW,
   uid, fmtTime, fmtDate, callEdge, detectAutoMode, mkLocal, renderMD,
-  checkImgRateLimit, recordImgUsage,
+  getLocalPollenInfo, setLocalPollenInfo,
 } from './constants.jsx'
 
 async function getFreshToken() {
@@ -52,61 +52,162 @@ function CookieBanner({ t, onAccept }) {
         <span style={{fontSize:20}}>🍪</span>
         <div>
           <div style={{fontSize:13,fontWeight:600,color:t.txt,marginBottom:2}}>Lumi používá cookies</div>
-          <div style={{fontSize:11,color:t.muted}}>Ukládáme rate limity pro generování obrázků a vaše preference (téma, nastavení). Žádné sledovací cookies třetích stran.</div>
+          <div style={{fontSize:11,color:t.muted}}>Ukládáme pollen balance a vaše preference (téma, nastavení). Žádné sledovací cookies třetích stran.</div>
         </div>
       </div>
-      <button onClick={onAccept}
-        style={{padding:'9px 20px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',flexShrink:0,transition:'all .15s'}}>
+      <button onClick={onAccept} style={{padding:'9px 20px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>
         Rozumím, přijmout
       </button>
     </div>
   )
 }
 
-// ── Aurora beam — ambientní světelný efekt ──────────────────────────────────
+// ── Keyboard shortcuts modal ───────────────────────────────────────────────────
+function ShortcutsModal({ t, onClose }) {
+  const shortcuts = [
+    ['Ctrl + K',      'Nová konverzace'],
+    ['Ctrl + /',      'Klávesové zkratky'],
+    ['Enter',         'Odeslat zprávu'],
+    ['Shift + Enter', 'Nový řádek'],
+    ['Ctrl + B',      'Tučný text (bold)'],
+    ['Escape',        'Zavřít modal'],
+    ['Ctrl + E',      'Export chatu'],
+  ]
+  return (
+    <>
+      <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:70,backdropFilter:'blur(4px)'}}/>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:71,width:'min(380px,94vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,padding:24,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .25s cubic-bezier(.34,1.56,.64,1)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <h3 style={{fontSize:15,fontWeight:600,color:t.txt}}>⌨️ Klávesové zkratky</h3>
+          <button onClick={onClose} style={{color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+        </div>
+        {shortcuts.map(([key, desc]) => (
+          <div key={key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${t.border}`}}>
+            <span style={{fontSize:13,color:t.muted}}>{desc}</span>
+            <kbd style={{padding:'3px 8px',borderRadius:5,background:t.btn,border:`1px solid ${t.border}`,fontSize:11,color:t.txt,fontFamily:'monospace',fontWeight:600}}>{key}</kbd>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// ── Aurora beam ───────────────────────────────────────────────────────────────
 function AuroraBeam({ t }) {
   return (
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:0}}>
-      {/* Hlavní záře */}
       <div style={{position:'absolute',top:'-15%',left:'50%',transform:'translateX(-50%)',width:'75%',height:'65%',background:`radial-gradient(ellipse at center, ${t.gradA}20 0%, ${t.gradB}12 40%, transparent 70%)`,animation:'auroraFloat 9s ease-in-out infinite',borderRadius:'50%',filter:'blur(48px)'}}/>
-      {/* Sekundární záře vlevo */}
       <div style={{position:'absolute',top:'5%',left:'10%',width:'35%',height:'45%',background:`radial-gradient(ellipse at center, ${t.gradB}12 0%, transparent 70%)`,animation:'auroraFloat2 13s ease-in-out infinite',borderRadius:'50%',filter:'blur(56px)'}}/>
-      {/* Sekundární záře vpravo */}
       <div style={{position:'absolute',top:'15%',right:'8%',width:'28%',height:'35%',background:`radial-gradient(ellipse at center, ${t.gradA}10 0%, transparent 70%)`,animation:'auroraFloat2 11s ease-in-out infinite reverse',borderRadius:'50%',filter:'blur(44px)'}}/>
-      {/* Jemné hvězdičky */}
-      {[...Array(6)].map((_,i)=>(
-        <div key={i} style={{position:'absolute',width:2,height:2,borderRadius:'50%',background:t.gradA,opacity:.4,top:`${15+i*12}%`,left:`${20+i*11}%`,animation:`auroraFloat2 ${6+i*1.5}s ease-in-out infinite`,animationDelay:`${i*0.8}s`}}/>
+      {[...Array(5)].map((_,i)=>(
+        <div key={i} style={{position:'absolute',width:2,height:2,borderRadius:'50%',background:t.gradA,opacity:.4,top:`${15+i*13}%`,left:`${18+i*13}%`,animation:`auroraFloat2 ${6+i*1.5}s ease-in-out infinite`,animationDelay:`${i*0.9}s`}}/>
       ))}
     </div>
   )
 }
 
-// ── Img rate limit badge ──────────────────────────────────────────────────────
-function ImgLimitBadge({ t }) {
-  const [info, setInfo] = useState(null)
-  useEffect(() => {
-    const { remaining } = checkImgRateLimit()
-    setInfo(remaining)
-    const id = setInterval(() => setInfo(checkImgRateLimit().remaining), 30000)
-    return () => clearInterval(id)
-  }, [])
-  if (info === null || info >= 6) return null
-  const clr = info <= 1 ? t.danger : info <= 3 ? '#f59e0b' : t.green
+// ── Pollen badge ──────────────────────────────────────────────────────────────
+function PollenBadge({ t, imgModel, pollenInfo }) {
+  const modelCost = IMG_MODELS.find(m=>m.id===imgModel)?.cost || 1
+  const remaining = pollenInfo.remaining ?? POLLEN_LIMIT
+  const pct       = Math.max(0, Math.min(100, Math.round((remaining / POLLEN_LIMIT) * 100)))
+  const clr       = remaining <= 0 ? t.danger : remaining < 10 ? '#f59e0b' : t.green
   return (
-    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:clr+'22',color:clr,fontWeight:600,flexShrink:0}}>
-      {info === 0 ? '⏳ Limit' : `🎨 ${info}/6`}
-    </span>
+    <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 9px',borderRadius:7,background:t.tag,border:`1px solid ${t.border}`,fontSize:11}}>
+      <span style={{fontSize:12}}>🌸</span>
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <span style={{color:clr,fontWeight:700}}>{remaining}p</span>
+          <span style={{color:t.muted}}>/ {POLLEN_LIMIT}</span>
+        </div>
+        <div style={{width:44,height:3,background:t.btn,borderRadius:2,overflow:'hidden',marginTop:2}}>
+          <div style={{width:`${pct}%`,height:'100%',background:clr,borderRadius:2,transition:'width .4s ease'}}/>
+        </div>
+      </div>
+      {remaining < modelCost && <span style={{fontSize:9,color:t.danger,fontWeight:700}}>⚠️{modelCost}p</span>}
+    </div>
   )
 }
 
-// ── Sparkle button (nová věc — generuje obrázek z výběru textu) ──────────────
-function SparkleBtn({ t, selectedText, onGenerate }) {
+// ── Sparkle (Vizualizovat výběr) ──────────────────────────────────────────────
+function SparkleBtn({ t, onGenerate, selectedText }) {
   if (!selectedText) return null
   return (
     <button onClick={()=>onGenerate(selectedText)}
-      style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:20,background:`linear-gradient(135deg,${t.gradA},${t.gradB})`,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',boxShadow:`0 4px 16px ${t.gradA}44`,animation:'sparkleIn .25s cubic-bezier(.34,1.56,.64,1)',position:'fixed',zIndex:70}}>
+      style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:20,background:`linear-gradient(135deg,${t.gradA},${t.gradB})`,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',boxShadow:`0 4px 16px ${t.gradA}44`,animation:'sparkleIn .25s cubic-bezier(.34,1.56,.64,1)'}}>
       {Ic.spark} Vizualizovat výběr
     </button>
+  )
+}
+
+// ── Markdown toolbar (vlastní věc #5) ─────────────────────────────────────────
+function MdToolbar({ t, taRef, input, setInput }) {
+  const apply = (pre, suf='') => {
+    const ta = taRef.current; if (!ta) return
+    const s = ta.selectionStart, e = ta.selectionEnd
+    const sel = input.slice(s, e) || 'text'
+    const newVal = input.slice(0, s) + pre + sel + suf + input.slice(e)
+    setInput(newVal)
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(s+pre.length, s+pre.length+sel.length) }, 0)
+  }
+  const btns = [
+    { label:'B',  title:'Tučný (Ctrl+B)',  pre:'**', suf:'**', style:{fontWeight:700} },
+    { label:'I',  title:'Kurzíva',         pre:'*',  suf:'*',  style:{fontStyle:'italic'} },
+    { label:'`',  title:'Kód',             pre:'`',  suf:'`',  style:{fontFamily:'monospace'} },
+    { label:'> ', title:'Citace',          pre:'> ', suf:'',   style:{} },
+    { label:'—',  title:'Oddělovač',       pre:'\n---\n', suf:'', style:{} },
+  ]
+  return (
+    <div style={{display:'flex',gap:3,marginBottom:6,flexWrap:'wrap'}}>
+      {btns.map(b=>(
+        <button key={b.label} onClick={()=>apply(b.pre,b.suf)} title={b.title}
+          style={{padding:'3px 8px',borderRadius:5,background:t.btn,color:t.muted,fontSize:12,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',...b.style}}
+          onMouseOver={e=>{e.currentTarget.style.background=t.active;e.currentTarget.style.color=t.txt}}
+          onMouseOut={e=>{e.currentTarget.style.background=t.btn;e.currentTarget.style.color=t.muted}}>
+          {b.label}
+        </button>
+      ))}
+      <span style={{fontSize:10,color:t.muted,alignSelf:'center',marginLeft:3}}>Md</span>
+    </div>
+  )
+}
+
+// ── Quick reactions (vlastní věc #4) ──────────────────────────────────────────
+function QuickReactions({ msgId, reactions, onReact, t }) {
+  const [open, setOpen] = useState(false)
+  const emojis = ['👍','❤️','😂','🔥','👏','🤔','😮','✅']
+  const myReacts = reactions[msgId] || []
+  return (
+    <div style={{display:'inline-flex',alignItems:'center',gap:3,flexWrap:'wrap',marginTop:3}}>
+      {myReacts.map(r=>(
+        <button key={r.emoji} onClick={()=>onReact(msgId,r.emoji)}
+          style={{display:'flex',alignItems:'center',gap:2,padding:'2px 6px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+          onMouseOver={e=>e.currentTarget.style.transform='scale(1.1)'}
+          onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
+          {r.emoji} <span style={{fontSize:10,color:t.muted}}>{r.count}</span>
+        </button>
+      ))}
+      <div style={{position:'relative'}}>
+        <button onClick={()=>setOpen(o=>!o)}
+          style={{padding:'2px 6px',borderRadius:10,background:'transparent',border:`1px dashed ${t.border}`,fontSize:11,color:t.muted,cursor:'pointer',transition:'all .15s'}}
+          onMouseOver={e=>e.currentTarget.style.borderColor=t.accent}
+          onMouseOut={e=>e.currentTarget.style.borderColor=t.border}>
+          + 😊
+        </button>
+        {open&&(
+          <div style={{position:'absolute',bottom:'calc(100% + 4px)',left:0,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,padding:6,display:'flex',gap:4,flexWrap:'wrap',width:160,zIndex:20,boxShadow:'0 8px 24px rgba(0,0,0,.3)',animation:'dropIn .2s ease'}}>
+            {emojis.map(e=>(
+              <button key={e} onClick={()=>{onReact(msgId,e);setOpen(false)}}
+                style={{fontSize:16,padding:4,borderRadius:6,background:'transparent',border:'none',cursor:'pointer',transition:'transform .1s'}}
+                onMouseOver={ev=>ev.currentTarget.style.transform='scale(1.25)'}
+                onMouseOut={ev=>ev.currentTarget.style.transform='scale(1)'}>
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -124,10 +225,9 @@ function ImgGrid({ images, query, t }) {
             onMouseOver={e=>{e.currentTarget.style.transform='scale(1.04)';e.currentTarget.style.opacity='.9'}}
             onMouseOut={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.opacity='1'}}>
             <div style={{position:'relative',paddingBottom:'66%',overflow:'hidden'}}>
-              <img src={img.thumbnail||img.url} alt={img.title||query}
-                onError={()=>setErrs(p=>({...p,[i]:true}))}
+              <img src={img.thumbnail||img.url} alt={img.title||query} onError={()=>setErrs(p=>({...p,[i]:true}))}
                 style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',transition:'transform .3s ease'}}
-                onMouseOver={e=>e.currentTarget.style.transform='scale(1.06)'}
+                onMouseOver={e=>e.currentTarget.style.transform='scale(1.07)'}
                 onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}/>
             </div>
             <div style={{padding:'4px 7px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -149,16 +249,13 @@ function GenImg({ imageData, mimeType, prompt, modelId, t }) {
   const src       = `data:${mimeType||'image/jpeg'};base64,${imageData}`
   const modelName = IMG_MODELS.find(m=>m.id===modelId)?.name || 'Pollinations'
   const dl = () => { const a=document.createElement('a');a.href=src;a.download=`lumi-${Date.now()}.jpg`;a.click() }
-
-  // Fake progress bar pro loading feel
   useEffect(()=>{
-    if(loaded) return
+    if (loaded) return
     setProgress(0)
-    const id=setInterval(()=>setProgress(p=>p>=85?85:p+Math.random()*8),400)
-    return()=>clearInterval(id)
+    const id = setInterval(()=>setProgress(p=>p>=85?85:p+Math.random()*8), 400)
+    return () => clearInterval(id)
   },[loaded])
   useEffect(()=>{ if(loaded) setProgress(100) },[loaded])
-
   return (
     <div>
       <div style={{fontSize:12,color:t.muted,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
@@ -166,19 +263,13 @@ function GenImg({ imageData, mimeType, prompt, modelId, t }) {
       </div>
       {!loaded&&(
         <div style={{width:320,maxWidth:'100%',borderRadius:12,overflow:'hidden',border:`1px solid ${t.border}`}}>
-          {/* Shimmer skeleton */}
-          <div className="shimmer" style={{height:280,borderRadius:'12px 12px 0 0'}}/>
-          {/* Progress bar */}
+          <div className="shimmer" style={{height:280}}/>
           <div style={{height:3,background:t.btn}}>
-            <div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${progress}%`,transition:'width .4s ease',borderRadius:2}}/>
+            <div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${progress}%`,transition:'width .4s ease'}}/>
           </div>
           <div style={{padding:'8px 12px',display:'flex',alignItems:'center',gap:8}}>
-            <div style={{display:'flex',gap:3}}>
-              {[0,1,2].map(i=>(
-                <div key={i} style={{width:5,height:5,borderRadius:'50%',background:t.gradA,opacity:.6,animation:`pu 1.4s infinite ease-in-out`,animationDelay:`${i*0.22}s`}}/>
-              ))}
-            </div>
-            <span style={{fontSize:11,color:t.muted,animation:'progressPulse 1.5s infinite'}}>Generuji obrázek…</span>
+            <div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/>
+            <span style={{fontSize:11,color:t.muted}}>Generuji ({progress.toFixed(0)}%)…</span>
           </div>
         </div>
       )}
@@ -186,13 +277,13 @@ function GenImg({ imageData, mimeType, prompt, modelId, t }) {
         <img src={src} alt={prompt} onLoad={()=>setLoaded(true)}
           style={{maxWidth:'100%',maxHeight:460,borderRadius:12,display:'block',border:`1px solid ${t.border}`,animation:'imgReveal .6s cubic-bezier(.34,1.06,.64,1)'}}/>
         <button onClick={dl}
-          style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:'rgba(0,0,0,.7)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',backdropFilter:'blur(6px)',fontFamily:'inherit',transition:'all .15s'}}
+          style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:'rgba(0,0,0,.7)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',backdropFilter:'blur(6px)',fontFamily:'inherit'}}
           onMouseOver={e=>e.currentTarget.style.background='rgba(0,0,0,.9)'}
           onMouseOut={e=>e.currentTarget.style.background='rgba(0,0,0,.7)'}>
           {Ic.dl} Stáhnout
         </button>
       </div>
-      {prompt&&loaded&&<div style={{fontSize:11,color:t.muted,marginTop:6,fontStyle:'italic',lineHeight:1.4}}>„{prompt}"</div>}
+      {prompt&&loaded&&<div style={{fontSize:11,color:t.muted,marginTop:6,fontStyle:'italic'}}>„{prompt}"</div>}
     </div>
   )
 }
@@ -214,8 +305,7 @@ function QuizCard({ questions, t }) {
           <div style={{width:`${pct}%`,height:'100%',background:pct>=80?t.succ:pct>=60?t.accent:'#f59e0b',borderRadius:4,transition:'width 1.4s cubic-bezier(.4,0,.2,1)'}}/>
         </div>
         <div style={{fontSize:13,color:t.muted,marginTop:12,marginBottom:18}}>{pct>=80?'Výborně!':pct>=60?'Dobrá práce!':pct>=40?'Slušný výsledek!':'Příště lépe!'}</div>
-        <button onClick={()=>{setAnswers({});setCur(0);setDone(false)}}
-          style={{padding:'10px 24px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>🔄 Zkusit znovu</button>
+        <button onClick={()=>{setAnswers({});setCur(0);setDone(false)}} style={{padding:'10px 24px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>🔄 Zkusit znovu</button>
       </div>
     )
   }
@@ -235,7 +325,7 @@ function QuizCard({ questions, t }) {
           if(sel!==undefined){if(isC){bg=t.success;clr=t.succ;brd=t.succ}else if(isSel){bg='rgba(239,68,68,.15)';clr='#fca5a5';brd='#f87171'}}
           return (
             <button key={i} onClick={()=>sel===undefined&&setAnswers(p=>({...p,[cur]:i}))} disabled={sel!==undefined}
-              style={{padding:'9px 13px',borderRadius:8,background:bg,color:clr,border:`1.5px solid ${brd}`,fontSize:13,textAlign:'left',cursor:sel===undefined?'pointer':'default',fontFamily:'inherit',transition:'all .2s',display:'flex',alignItems:'center',gap:8,transform:sel===undefined?'':'scale(1)'}}>
+              style={{padding:'9px 13px',borderRadius:8,background:bg,color:clr,border:`1.5px solid ${brd}`,fontSize:13,textAlign:'left',cursor:sel===undefined?'pointer':'default',fontFamily:'inherit',transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
               <span style={{width:22,height:22,borderRadius:'50%',background:'rgba(255,255,255,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{String.fromCharCode(65+i)}</span>
               <span>{opt}</span>
               {sel!==undefined&&isC&&<span style={{marginLeft:'auto',fontWeight:700,animation:'checkIn .3s cubic-bezier(.34,1.56,.64,1)'}}>✓</span>}
@@ -245,14 +335,12 @@ function QuizCard({ questions, t }) {
         })}
       </div>
       {answers[cur]!==undefined&&q.explanation&&(
-        <div style={{marginTop:10,padding:'10px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,color:t.muted,lineHeight:1.5,animation:'fadeIn .3s ease'}}>
-          💡 {q.explanation}
-        </div>
+        <div style={{marginTop:10,padding:'10px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,color:t.muted,lineHeight:1.5,animation:'fadeIn .3s ease'}}>💡 {q.explanation}</div>
       )}
       {answers[cur]!==undefined&&(
         <div style={{marginTop:12}}>
           {cur<total-1
-            ?<button onClick={()=>setCur(c=>c+1)} style={{width:'100%',padding:'9px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'transform .15s'}} onMouseOver={e=>e.currentTarget.style.transform='scale(1.01)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>Další →</button>
+            ?<button onClick={()=>setCur(c=>c+1)} style={{width:'100%',padding:'9px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Další →</button>
             :<button onClick={()=>setDone(true)} style={{width:'100%',padding:'9px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Výsledky 🏆</button>
           }
         </div>
@@ -261,8 +349,8 @@ function QuizCard({ questions, t }) {
   )
 }
 
-// ── Voice button (nyní jen ikona bez labelu) ──────────────────────────────────
-function VoiceBtn({ t, onTranscript, compact }) {
+// ── Voice button (compact — jen ikona) ───────────────────────────────────────
+function VoiceBtn({ t, onTranscript }) {
   const [on,setOn]=useState(false),[txt,setTxt]=useState(''),ref=useRef(null)
   const ok=typeof window!=='undefined'&&('SpeechRecognition' in window||'webkitSpeechRecognition' in window)
   if (!ok) return null
@@ -274,18 +362,19 @@ function VoiceBtn({ t, onTranscript, compact }) {
     r.onerror=()=>setOn(false);r.onend=()=>setOn(false)
     ref.current=r;r.start();setOn(true)
   }
-  if (compact) return (
-    <button onClick={toggle} title={on?'Zastavit nahrávání':'Hlasový vstup'}
-      style={{display:'flex',alignItems:'center',justifyContent:'center',padding:6,borderRadius:8,background:on?'#ef4444':t.btn,color:on?'#fff':t.muted,border:`1px solid ${on?'#ef4444':t.border}`,cursor:'pointer',transition:'all .2s',flexShrink:0,position:'relative'}}>
-      {Ic.mic}
-      {on&&txt&&<span style={{position:'absolute',bottom:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,color:t.txt,whiteSpace:'nowrap',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',boxShadow:'0 4px 12px rgba(0,0,0,.3)'}}>„{txt}"</span>}
-    </button>
+  return (
+    <div style={{position:'relative'}}>
+      <button onClick={toggle} title={on?'Zastavit':'Hlasový vstup'}
+        style={{display:'flex',alignItems:'center',justifyContent:'center',padding:6,borderRadius:8,background:on?'#ef4444':t.btn,color:on?'#fff':t.muted,border:`1px solid ${on?'#ef4444':t.border}`,cursor:'pointer',transition:'all .2s',flexShrink:0}}>
+        {Ic.mic}
+      </button>
+      {on&&txt&&<div style={{position:'absolute',bottom:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,color:t.txt,whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',boxShadow:'0 4px 12px rgba(0,0,0,.3)',zIndex:5}}>„{txt}"</div>}
+    </div>
   )
-  return null
 }
 
 // ── Message actions ───────────────────────────────────────────────────────────
-function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory, onStar, starred }) {
+function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory, onStar, starred, onReact, reactions }) {
   const [rat,setRat]=useState(null),[showFix,setShowFix]=useState(false),[fix,setFix]=useState(''),[copied,setCopied]=useState(false)
   const copy=()=>{navigator.clipboard.writeText(msg.content);setCopied(true);setTimeout(()=>setCopied(false),1500)}
   const feedback=async r=>{setRat(r);if(token&&msg.dbId){try{await callEdge('feedback',{messageId:msg.dbId,rating:r,correction:fix||null},token)}catch{}}setShowFix(false)}
@@ -300,13 +389,13 @@ function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory, onStar
         </button>
         {isLoggedIn&&<>
           <button onClick={()=>onSaveMemory(msg.content)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>{Ic.memory} Zapamatovat</button>
-          <button onClick={()=>onStar(msg)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:starred?'#f59e0b22':t.btn,color:starred?'#f59e0b':t.muted,border:`1px solid ${starred?'#f59e0b':t.border}`,cursor:'pointer',transition:'all .2s'}}>
-            {starred?Ic.starF:Ic.star}
-          </button>
+          <button onClick={()=>onStar(msg)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:starred?'#f59e0b22':t.btn,color:starred?'#f59e0b':t.muted,border:`1px solid ${starred?'#f59e0b':t.border}`,cursor:'pointer',transition:'all .2s'}}>{starred?Ic.starF:Ic.star}</button>
         </>}
         <button onClick={()=>feedback(1)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:rat===1?t.success:t.btn,color:rat===1?t.succ:t.muted,border:`1px solid ${rat===1?t.succ:t.border}`,cursor:'pointer'}}>{Ic.thumbUp}</button>
         <button onClick={()=>rat===-1?setShowFix(true):feedback(-1)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:rat===-1?'rgba(239,68,68,.15)':t.btn,color:rat===-1?'#fca5a5':t.muted,border:`1px solid ${rat===-1?'#f87171':t.border}`,cursor:'pointer'}}>{Ic.thumbDn}</button>
       </div>
+      {/* Quick reactions (vlastní věc #4) */}
+      <QuickReactions msgId={msg.id} reactions={reactions} onReact={onReact} t={t}/>
       {showFix&&(
         <div style={{marginTop:6,padding:12,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,animation:'fadeIn .2s ease'}}>
           <div style={{fontSize:12,color:t.txt,marginBottom:7}}>Správná odpověď:</div>
@@ -324,11 +413,8 @@ function MsgActions({ msg, t, isLoggedIn, token, onExplain, onSaveMemory, onStar
 
 // ── Toolbar dropdown ──────────────────────────────────────────────────────────
 function ToolDropdown({ t, label, icon, children, accent, active }) {
-  const [open,setOpen]=useState(false), ref=useRef(null)
-  useEffect(()=>{
-    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)}
-    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)
-  },[])
+  const [open,setOpen]=useState(false),ref=useRef(null)
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[])
   const clr=accent||t.accent
   return (
     <div ref={ref} style={{position:'relative'}}>
@@ -353,8 +439,7 @@ function AddMemoryModal({ t, onClose, onSave }) {
   return (
     <>
       <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:58,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()}
-        style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:59,width:'min(420px,96vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,padding:24,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .3s cubic-bezier(.34,1.56,.64,1)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:59,width:'min(420px,96vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,padding:24,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .3s cubic-bezier(.34,1.56,.64,1)'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
           <h3 style={{fontSize:15,fontWeight:600,color:t.txt}}>➕ Přidat do paměti Lumi</h3>
           <button onClick={onClose} style={{color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
@@ -373,10 +458,7 @@ function AddMemoryModal({ t, onClose, onSave }) {
         </div>
         <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,background:t.btn,color:t.txt,fontSize:13,fontWeight:500,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
-          <button onClick={save} disabled={!content.trim()}
-            style={{padding:'8px 16px',borderRadius:8,background:content.trim()?t.accent:t.btn,color:content.trim()?'#fff':t.muted,fontSize:13,fontWeight:600,border:'none',cursor:content.trim()?'pointer':'default',fontFamily:'inherit',transition:'all .15s'}}>
-            Uložit
-          </button>
+          <button onClick={save} disabled={!content.trim()} style={{padding:'8px 16px',borderRadius:8,background:content.trim()?t.accent:t.btn,color:content.trim()?'#fff':t.muted,fontSize:13,fontWeight:600,border:'none',cursor:content.trim()?'pointer':'default',fontFamily:'inherit',transition:'all .15s'}}>Uložit</button>
         </div>
       </div>
     </>
@@ -386,9 +468,7 @@ function AddMemoryModal({ t, onClose, onSave }) {
 // ── Settings modal ────────────────────────────────────────────────────────────
 function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose, isLoggedIn, userId, memory, setMemory, aiModel, setAiModel, onAddMemory }) {
   const [tmp,setTmp]=useState(sysPmt),[tmpAI,setTmpAI]=useState(aiModel),[memList,setMemList]=useState([]),[tab,setTab]=useState('appearance')
-  useEffect(()=>{
-    if(tab==='memory'&&isLoggedIn)supabase.from('user_memory').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(50).then(({data})=>setMemList(data||[]))
-  },[tab,isLoggedIn,userId])
+  useEffect(()=>{if(tab==='memory'&&isLoggedIn)supabase.from('user_memory').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(50).then(({data})=>setMemList(data||[]))},[tab,isLoggedIn,userId])
   const delMem=async id=>{await supabase.from('user_memory').delete().eq('id',id);setMemList(p=>p.filter(m=>m.id!==id))}
   const delAll=async()=>{if(!isLoggedIn)return;await supabase.from('user_memory').delete().eq('user_id',userId);setMemList([])}
   const save=()=>{setSysPmt(tmp);setAiModel(tmpAI);onClose()}
@@ -396,22 +476,19 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
   return (
     <>
       <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:49,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()}
-        style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(580px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s cubic-bezier(.34,1.56,.64,1)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(580px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s cubic-bezier(.34,1.56,.64,1)'}}>
         <div style={{padding:'18px 20px 0',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
           <div style={{display:'flex',alignItems:'center',gap:10}}><LumiAvatar size={32} gradient={[t.gradA,t.gradB]}/><h2 style={{fontSize:16,fontWeight:600,color:t.txt}}>Nastavení</h2></div>
           <button onClick={onClose} style={{background:'none',border:'none',color:t.muted,cursor:'pointer',fontSize:20,display:'flex',padding:4}}>{Ic.x}</button>
         </div>
         <div style={{display:'flex',gap:4,padding:'12px 20px 0',flexShrink:0,flexWrap:'wrap'}}>
           {tabs.map(tb=>(
-            <button key={tb.id} onClick={()=>setTab(tb.id)}
-              style={{padding:'6px 11px',borderRadius:8,background:tab===tb.id?t.accent:t.btn,color:tab===tb.id?'#fff':t.muted,fontSize:12,fontWeight:tab===tb.id?600:400,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
+            <button key={tb.id} onClick={()=>setTab(tb.id)} style={{padding:'6px 11px',borderRadius:8,background:tab===tb.id?t.accent:t.btn,color:tab===tb.id?'#fff':t.muted,fontSize:12,fontWeight:tab===tb.id?600:400,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
               {tb.e} {tb.l}
             </button>
           ))}
         </div>
         <div style={{flex:1,overflowY:'auto',padding:'16px 20px 20px'}}>
-
           {tab==='appearance'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>12 barevných témat</div>
@@ -425,13 +502,11 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
               </div>
             </>
           )}
-
           {tab==='model'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>AI Model pro chat</div>
               {AI_MODELS.map(m=>(
-                <button key={m.id} onClick={()=>setTmpAI(m.id)}
-                  style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${tmpAI===m.id?t.accent:t.border}`,background:tmpAI===m.id?t.accent+'18':t.btn,color:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',transition:'all .15s',marginBottom:8,display:'block'}}>
+                <button key={m.id} onClick={()=>setTmpAI(m.id)} style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${tmpAI===m.id?t.accent:t.border}`,background:tmpAI===m.id?t.accent+'18':t.btn,color:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',transition:'all .15s',marginBottom:8,display:'block'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <strong style={{color:tmpAI===m.id?t.accent:t.txt}}>{m.name}</strong>
                     {tmpAI===m.id&&<span style={{color:t.accent}}>{Ic.check}</span>}
@@ -440,45 +515,38 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
                 </button>
               ))}
               <div style={{padding:'12px 14px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,color:t.muted,lineHeight:1.6}}>
-                💡 Pollinations.ai modely jsou <strong style={{color:t.accent}}>zdarma</strong>. Přidej API klíč ze <a href="https://enter.pollinations.ai/" target="_blank" rel="noopener noreferrer" style={{color:t.accent}}>Seed tieru</a> do Supabase Secrets jako <code style={{background:t.btn,padding:'1px 5px',borderRadius:3}}>POLLINATIONS_API_KEY</code> pro prioritní přístup.
+                💡 <strong style={{color:t.txt}}>Gemma 3 27B</strong> je výchozí model. <strong style={{color:t.txt}}>Deep Thinking</strong> = Gemini 2.5 Flash (fallback Gemma 27B). Vysvětlení „Jak jsem to zjistil" vždy používá Gemma 3 12B.
               </div>
             </>
           )}
-
           {tab==='behavior'&&(
             <>
               <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>Osobnost</div>
               <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:18}}>
                 {PERSONAS.map(p=>(
-                  <button key={p.label} onClick={()=>setTmp(p.val)}
-                    style={{padding:'10px 13px',borderRadius:9,border:`1.5px solid ${tmp===p.val?t.accent:t.border}`,background:tmp===p.val?t.accent+'18':t.btn,color:tmp===p.val?t.accent:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'all .15s'}}>
+                  <button key={p.label} onClick={()=>setTmp(p.val)} style={{padding:'10px 13px',borderRadius:9,border:`1.5px solid ${tmp===p.val?t.accent:t.border}`,background:tmp===p.val?t.accent+'18':t.btn,color:tmp===p.val?t.accent:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'all .15s'}}>
                     {p.label}{tmp===p.val&&<span style={{color:t.accent,flexShrink:0}}>{Ic.check}</span>}
                   </button>
                 ))}
               </div>
-              <textarea value={tmp} onChange={e=>setTmp(e.target.value)} rows={3}
-                style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
+              <textarea value={tmp} onChange={e=>setTmp(e.target.value)} rows={3} style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
               <div style={{padding:'12px 14px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`}}>
                 <div style={{fontSize:12,fontWeight:600,color:t.txt,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>{Ic.brain} Epizodická paměť</div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                   <span style={{fontSize:12,color:t.muted}}>Lumi si pamatuje kontext z minulých chatů</span>
-                  <button onClick={()=>setMemory(m=>!m)}
-                    style={{width:42,height:24,borderRadius:12,background:memory?t.accent:t.btn,border:`1px solid ${memory?t.accent:t.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
+                  <button onClick={()=>setMemory(m=>!m)} style={{width:42,height:24,borderRadius:12,background:memory?t.accent:t.btn,border:`1px solid ${memory?t.accent:t.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
                     <span style={{position:'absolute',top:3,left:memory?20:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',display:'block'}}/>
                   </button>
                 </div>
               </div>
             </>
           )}
-
           {tab==='memory'&&(
             <>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em'}}>Paměť {memList.length>0&&`(${memList.length})`}</div>
                 <div style={{display:'flex',gap:6}}>
-                  <button onClick={()=>{onAddMemory();onClose()}} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:7,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
-                    {Ic.addMem} Přidat
-                  </button>
+                  <button onClick={()=>{onAddMemory();onClose()}} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:7,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>{Ic.addMem} Přidat</button>
                   {memList.length>0&&<button onClick={delAll} style={{fontSize:12,color:t.danger,cursor:'pointer',background:'none',border:'none',fontFamily:'inherit',padding:'5px 8px'}}>Smazat vše</button>}
                 </div>
               </div>
@@ -494,7 +562,6 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
               ))}
             </>
           )}
-
           {tab==='about'&&(
             <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,marginBottom:20}}>
@@ -505,7 +572,7 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
                   <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'2px 10px',borderRadius:4,fontWeight:600,fontSize:12}}>BETA</span>
                 </div>
               </div>
-              {[['🤖 Chat','Gemini 3.1 Flash Lite / Flash'],['💭 Deep Thinking','Gemini 2.5 Flash/Pro'],['🔶 Gemma','Gemma 3 12B / 27B'],['🔴 Live','Gemini 2.0 Flash Live'],['🎨 AI Obrázky','Pollinations.ai (5 modelů)'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
+              {[['🤖 Chat','Gemma 3 27B (výchozí)'],['⚡ Gemini','Gemini 3.1 Flash Lite (volitelný)'],['💭 Deep Thinking','Gemini 2.5 Flash/Pro'],['🔍 Vysvětlení','Gemma 3 12B'],['🔴 Live','Gemini 2.0 Flash Live'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
                 <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,marginBottom:6}}>
                   <span>{k}</span><span style={{color:t.accent,fontSize:12}}>{v}</span>
                 </div>
@@ -513,7 +580,6 @@ function SettingsModal({ t, themeName, setThemeName, sysPmt, setSysPmt, onClose,
             </div>
           )}
         </div>
-
         {(tab==='appearance'||tab==='behavior'||tab==='model')&&(
           <div style={{padding:'0 20px 20px',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
             <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,background:t.btn,color:t.txt,fontSize:13,fontWeight:500,cursor:'pointer',border:'none',fontFamily:'inherit'}}>Zrušit</button>
@@ -532,14 +598,16 @@ export default function Chat({ session }) {
   const [showSet,    setShowSet]    = useState(false)
   const [showLive,   setShowLive]   = useState(false)
   const [showAddMem, setShowAddMem] = useState(false)
+  const [showShort,  setShowShort]  = useState(false)
   const [cookies,    setCookies]    = useState(()=>localStorage.getItem('lumi_cookies')==='1')
   const [sysPmt,     setSysPmt]     = useState(()=>localStorage.getItem('syspmt')||SYS_DEFAULT)
   const [aiModel,    setAiModel]    = useState(()=>localStorage.getItem('aiModel')||'default')
   const [imgMode,    setImgMode]    = useState('chat')
-  const [imgModel,   setImgModel]   = useState(IMG_MODELS[0].id)
+  const [imgModel,   setImgModel]   = useState('flux')
   const [thinking,   setThinking]   = useState(false)
   const [memory,     setMemory]     = useState(true)
   const [mdMode,     setMdMode]     = useState(true)
+  const [showMdBar,  setShowMdBar]  = useState(false)
   const [sideOpen,   setSideOpen]   = useState(()=>typeof window!=='undefined'&&window.innerWidth>768)
   const [input,      setInput]      = useState('')
   const [atts,       setAtts]       = useState([])
@@ -565,10 +633,15 @@ export default function Chat({ session }) {
   const [newIds,     setNewIds]     = useState(new Set())
   const [typingIds,  setTypingIds]  = useState(new Set())
   const [userMsgCnt, setUserMsgCnt] = useState(0)
-  const [selTxt,     setSelTxt]     = useState('')   // Vizualizovat výběr
+  const [selTxt,     setSelTxt]     = useState('')
   const [selPos,     setSelPos]     = useState(null)
+  // 5 vlastních věcí
+  const [pollenInfo, setPollenInfo] = useState(()=>getLocalPollenInfo())
+  const [wordCount,  setWordCount]  = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [reactions,  setReactions]  = useState({})
 
-  const endRef=useRef(null), fileRef=useRef(null), taRef=useRef(null), searchRef=useRef(null)
+  const endRef=useRef(null),fileRef=useRef(null),taRef=useRef(null),searchRef=useRef(null)
   const t          = THEMES[themeName]||THEMES.dark
   const isLoggedIn = !!session
   const activeConv = useMemo(()=>convs.find(c=>c.id===activeId)??convs[0]??null,[convs,activeId])
@@ -576,31 +649,59 @@ export default function Chat({ session }) {
   useEffect(()=>{localStorage.setItem('theme',themeName)},[themeName])
   useEffect(()=>{localStorage.setItem('syspmt',sysPmt)},[sysPmt])
   useEffect(()=>{localStorage.setItem('aiModel',aiModel)},[aiModel])
-
-  // Text selection for sparkle feature
-  useEffect(()=>{
-    const handler=()=>{
-      const sel=window.getSelection()
-      const txt=sel?.toString().trim()||''
-      if(txt.length>5&&txt.length<300){
-        setSelTxt(txt)
-        const range=sel.getRangeAt(0)
-        const rect=range.getBoundingClientRect()
-        setSelPos({x:rect.left+rect.width/2,y:rect.top-12})
-      }else{setSelTxt('');setSelPos(null)}
-    }
-    document.addEventListener('mouseup',handler)
-    return()=>document.removeEventListener('mouseup',handler)
-  },[])
-
-  useEffect(()=>{
-    if(isLoggedIn){getFreshToken().then(setToken);loadConvs()}
-    else{const c=mkLocal();setConvs([c]);setActiveId(c.id);setMsgs([])}
-  },[isLoggedIn]) // eslint-disable-line
+  useEffect(()=>{if(isLoggedIn){getFreshToken().then(setToken);loadConvs()}else{const c=mkLocal();setConvs([c]);setActiveId(c.id);setMsgs([])}},[isLoggedIn]) // eslint-disable-line
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'})},[msgs.length,activeConv?.messages?.length,loading])
   useEffect(()=>{if(activeId&&typeof window!=='undefined'&&window.innerWidth<=768)setSideOpen(false)},[activeId])
 
-  // ── DB ──────────────────────────────────────────────────────────────────────
+  // Vlastní věc #1 — Word Counter
+  useEffect(()=>{setWordCount(input.trim()?input.trim().split(/\s+/).filter(Boolean).length:0)},[input])
+
+  // Vlastní věc #2 — Keyboard Shortcuts
+  useEffect(()=>{
+    const h=e=>{
+      if(e.ctrlKey||e.metaKey){
+        if(e.key==='k'){e.preventDefault();newConv()}
+        if(e.key==='/'){e.preventDefault();setShowShort(s=>!s)}
+        if(e.key==='e'){e.preventDefault();exportChat()}
+        if(e.key==='b'&&document.activeElement===taRef.current){
+          e.preventDefault()
+          const ta=taRef.current,s=ta.selectionStart,en=ta.selectionEnd
+          const sel=input.slice(s,en)||'text'
+          setInput(input.slice(0,s)+'**'+sel+'**'+input.slice(en))
+        }
+      }
+      if(e.key==='Escape'){setShowShort(false);setExplainTxt(null)}
+    }
+    window.addEventListener('keydown',h)
+    return()=>window.removeEventListener('keydown',h)
+  },[input]) // eslint-disable-line
+
+  // Vlastní věc #3 — Drag & Drop
+  useEffect(()=>{
+    const onDragOver=e=>{e.preventDefault();setIsDragging(true)}
+    const onDragLeave=e=>{if(!e.currentTarget.contains(e.relatedTarget))setIsDragging(false)}
+    const onDrop=async e=>{
+      e.preventDefault();setIsDragging(false)
+      const files=Array.from(e.dataTransfer.files);if(!files.length)return
+      const res=await Promise.all(files.map(f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r({id:uid(),name:f.name,type:f.type,size:f.size,data:rd.result.split(',')[1],preview:f.type.startsWith('image/')?rd.result:null});rd.readAsDataURL(f)})))
+      setAtts(p=>[...p,...res])
+    }
+    const el=document.getElementById('lumi-main')
+    if(el){el.addEventListener('dragover',onDragOver);el.addEventListener('dragleave',onDragLeave);el.addEventListener('drop',onDrop)}
+    return()=>{if(el){el.removeEventListener('dragover',onDragOver);el.removeEventListener('dragleave',onDragLeave);el.removeEventListener('drop',onDrop)}}
+  },[])
+
+  // Text selection → sparkle
+  useEffect(()=>{
+    const h=()=>{
+      const sel=window.getSelection();const txt=sel?.toString().trim()||''
+      if(txt.length>5&&txt.length<300){setSelTxt(txt);const r=sel.getRangeAt(0).getBoundingClientRect();setSelPos({x:r.left+r.width/2,y:r.top-12})}
+      else{setSelTxt('');setSelPos(null)}
+    }
+    document.addEventListener('mouseup',h);return()=>document.removeEventListener('mouseup',h)
+  },[])
+
+  // ── DB helpers ───────────────────────────────────────────────────────────────
   async function loadConvs(){
     setDbLoad(true)
     const{data}=await supabase.from('conversations').select('*').order('updated_at',{ascending:false})
@@ -608,17 +709,9 @@ export default function Chat({ session }) {
     else{const c=await createConv();if(c){setConvs([{...c,local:false}]);setActiveId(c.id);setMsgs([])}}
     setDbLoad(false)
   }
-  async function loadMsgs(cid){
-    const{data}=await supabase.from('messages').select('*').eq('conversation_id',cid).order('created_at',{ascending:true})
-    setMsgs(data??[]);setStarred(new Set((data??[]).filter(m=>m.starred).map(m=>m.id)))
-    setUserMsgCnt((data??[]).filter(m=>m.role==='user').length)
-  }
-  async function createConv(title='Nová konverzace'){
-    const{data}=await supabase.from('conversations').insert({user_id:session.user.id,title}).select().single();return data
-  }
-  async function saveMsg(cid,role,content,type='text',meta=null){
-    const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url:meta?JSON.stringify(meta):null}).select().single();return data
-  }
+  async function loadMsgs(cid){const{data}=await supabase.from('messages').select('*').eq('conversation_id',cid).order('created_at',{ascending:true});setMsgs(data??[]);setStarred(new Set((data??[]).filter(m=>m.starred).map(m=>m.id)));setUserMsgCnt((data??[]).filter(m=>m.role==='user').length)}
+  async function createConv(title='Nová konverzace'){const{data}=await supabase.from('conversations').insert({user_id:session.user.id,title}).select().single();return data}
+  async function saveMsg(cid,role,content,type='text',meta=null){const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url:meta?JSON.stringify(meta):null}).select().single();return data}
 
   async function newConv(){
     setErr(null);setInput('');setAtts([])
@@ -628,55 +721,34 @@ export default function Chat({ session }) {
   }
   async function selectConv(id){setActiveId(id);setErr(null);if(isLoggedIn)await loadMsgs(id)}
   async function delConv(id,e){
-    e.stopPropagation()
-    if(isLoggedIn)await supabase.from('conversations').delete().eq('id',id)
+    e.stopPropagation();if(isLoggedIn)await supabase.from('conversations').delete().eq('id',id)
     setConvs(prev=>{const next=prev.filter(c=>c.id!==id);const list=next.length>0?next:[mkLocal()];if(id===activeId){setActiveId(list[0].id);if(isLoggedIn&&next.length>0)loadMsgs(list[0].id);else setMsgs([])};return list})
   }
-  async function renameConv(id,title){
-    if(!title.trim())return
-    if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',id)
-    setConvs(p=>p.map(c=>c.id===id?{...c,title}:c));setEditId(null)
-  }
-  async function setConvColor(id,color){
-    if(isLoggedIn)await supabase.from('conversations').update({color}).eq('id',id)
-    setConvs(p=>p.map(c=>c.id===id?{...c,color}:c))
-  }
-  async function autoTitle(cid,msg){
-    try{const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:msg}]}]},token||ANON);if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',cid);setConvs(p=>p.map(c=>c.id===cid?{...c,title:d.title}:c))}}catch{}
-  }
-  const starMsg=async msg=>{
-    const ns=!starred.has(msg.id)
-    setStarred(p=>{const n=new Set(p);ns?n.add(msg.id):n.delete(msg.id);return n})
-    if(isLoggedIn&&(msg.dbId||msg.id))await supabase.from('messages').update({starred:ns}).eq('id',msg.dbId||msg.id)
-  }
-  const exportChat=()=>{
-    const lines=displayMsgs.map(m=>`[${m.role==='user'?'Vy':'Lumi'}] ${fmtTime(m.created_at)}\n${m.content}\n`)
-    const b=new Blob([`Chat: ${activeConv?.title}\n${new Date().toLocaleString('cs-CZ')}\n\n`+lines.join('\n---\n\n')],{type:'text/plain;charset=utf-8'})
-    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`lumi-${activeConv?.title||'chat'}.txt`;a.click()
-  }
-  async function doSearch(q){
-    setSearchQ(q)
-    if(!q.trim()){setSearchRes([]);return}
-    if(isLoggedIn){const{data}=await supabase.from('conversations').select('id,title,updated_at').ilike('title',`%${q}%`).limit(8);setSearchRes(data??[])}
-    else setSearchRes(convs.filter(c=>c.title.toLowerCase().includes(q.toLowerCase())))
-  }
-  const onFile=async e=>{
-    const files=Array.from(e.target.files)
-    const res=await Promise.all(files.map(f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r({id:uid(),name:f.name,type:f.type,size:f.size,data:rd.result.split(',')[1],preview:f.type.startsWith('image/')?rd.result:null});rd.readAsDataURL(f)})))
-    setAtts(p=>[...p,...res]);fileRef.current.value=''
-  }
+  async function renameConv(id,title){if(!title.trim())return;if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',id);setConvs(p=>p.map(c=>c.id===id?{...c,title}:c));setEditId(null)}
+  async function setConvColor(id,color){if(isLoggedIn)await supabase.from('conversations').update({color}).eq('id',id);setConvs(p=>p.map(c=>c.id===id?{...c,color}:c))}
+  async function autoTitle(cid,msg){try{const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:msg}]}]},token||ANON);if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',cid);setConvs(p=>p.map(c=>c.id===cid?{...c,title:d.title}:c))}}catch{}}
+  const starMsg=async msg=>{const ns=!starred.has(msg.id);setStarred(p=>{const n=new Set(p);ns?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn&&(msg.dbId||msg.id))await supabase.from('messages').update({starred:ns}).eq('id',msg.dbId||msg.id)}
+  const exportChat=()=>{const lines=displayMsgs.map(m=>`[${m.role==='user'?'Vy':'Lumi'}] ${fmtTime(m.created_at)}\n${m.content}\n`);const b=new Blob([`Chat: ${activeConv?.title}\n${new Date().toLocaleString('cs-CZ')}\n\n`+lines.join('\n---\n\n')],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`lumi-${activeConv?.title||'chat'}.txt`;a.click()}
+  async function doSearch(q){setSearchQ(q);if(!q.trim()){setSearchRes([]);return};if(isLoggedIn){const{data}=await supabase.from('conversations').select('id,title,updated_at').ilike('title',`%${q}%`).limit(8);setSearchRes(data??[])}else setSearchRes(convs.filter(c=>c.title.toLowerCase().includes(q.toLowerCase())))}
+  const onFile=async e=>{const files=Array.from(e.target.files);const res=await Promise.all(files.map(f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r({id:uid(),name:f.name,type:f.type,size:f.size,data:rd.result.split(',')[1],preview:f.type.startsWith('image/')?rd.result:null});rd.readAsDataURL(f)})));setAtts(p=>[...p,...res]);fileRef.current.value=''}
+
+  // Vlastní věc #4 — Quick Reactions
+  const addReaction=(msgId,emoji)=>{setReactions(prev=>{const cur=prev[msgId]||[];const exists=cur.find(r=>r.emoji===emoji);if(exists){return{...prev,[msgId]:cur.map(r=>r.emoji===emoji?{...r,count:r.count+1}:r)}}return{...prev,[msgId]:[...cur,{emoji,count:1}]}})}
+
+  const addNewAnim=id=>{setNewIds(s=>{const n=new Set(s);n.add(id);setTimeout(()=>setNewIds(s2=>{const n2=new Set(s2);n2.delete(id);return n2}),800);return n})}
+  const addMemoryManual=async(content,category)=>{if(!isLoggedIn||!content)return;try{await callEdge('save_memory',{content,category,source:'manual'},token)}catch{}}
+  const saveMemory=async c=>{if(!isLoggedIn||!c)return;try{await callEdge('save_memory',{content:c.slice(0,500),category:'general',source:'auto'},token)}catch{}}
+  const explainMsg=async msg=>{setExplainTxt('Načítám (Gemma 3 12B)…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}],language:'Czech'},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
 
   const sendQuiz=async()=>{
-    if(!quizTopic.trim())return
-    setLoading(true);setErr(null)
+    if(!quizTopic.trim())return;setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
     const tmp={id:uid(),role:'user',content:`🎓 Kvíz: ${quizTopic} (${quizCount}×, ${quizDiff})`,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmp]}))
     else setMsgs(p=>[...p,tmp])
     try{
       const d=await callEdge('quiz',{topic:quizTopic,difficulty:quizDiff,questionCount:quizCount,language:'Czech'},token||ANON)
-      const qs=d.questions||[]
-      if(!qs.length)throw new Error('Kvíz neobsahuje otázky.')
+      const qs=d.questions||[];if(!qs.length)throw new Error('Kvíz neobsahuje otázky.')
       const aMsg={id:uid(),role:'assistant',type:'quiz',content:'🎓 Kvíz',_quizData:qs,created_at:new Date().toISOString()}
       if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       else{await saveMsg(cid,'user',tmp.content,'text',null);await saveMsg(cid,'assistant','🎓 Kvíz','quiz',qs);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmp,_tmp:false},aMsg])}
@@ -685,44 +757,49 @@ export default function Chat({ session }) {
     finally{setLoading(false);setQuizMode(false);setQuizTopic('')}
   }
 
-  const addMemoryManual=async(content,category)=>{if(!isLoggedIn||!content)return;try{await callEdge('save_memory',{content,category,source:'manual'},token)}catch{}}
-  const saveMemory=async c=>{if(!isLoggedIn||!c)return;try{await callEdge('save_memory',{content:c.slice(0,500),category:'general',source:'auto'},token)}catch{}}
-  const explainMsg=async msg=>{setExplainTxt('Načítám…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}],language:'Czech'},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
-  const addNewAnim=id=>{setNewIds(s=>{const n=new Set(s);n.add(id);setTimeout(()=>setNewIds(s2=>{const n2=new Set(s2);n2.delete(id);return n2}),800);return n})}
+  const parsePollenError=msg=>{
+    if(msg.startsWith('POLLEN_LIMIT:')){const[,spent,limit,wait,cost]=msg.split(':');return{type:'limit',spent:Number(spent),limit:Number(limit),wait:Number(wait),cost:Number(cost)}}
+    if(msg.startsWith('POLLEN_BALANCE:')){const wait=Number(msg.split(':')[1])||30;return{type:'balance',wait}}
+    return null
+  }
 
-  // Vizualizovat výběr — generuje obrázek z označeného textu
   const visualizeSelection=async txt=>{
     setSelTxt('');setSelPos(null)
-    const rl=checkImgRateLimit()
-    if(!rl.ok){setErr(`Limit obrázků: počkejte ještě ${rl.wait} min`);return}
+    if(!isLoggedIn){setErr('Pro generování se přihlaste.');return}
     setInput(txt);setImgMode('generate_image')
-    setTimeout(()=>{send_img(txt)},50)
+    setTimeout(()=>send_img(txt),50)
   }
-  // Odeslání obrázku přímo
-  const send_img=async(overrideText)=>{
+
+  const send_img=async overrideText=>{
     const txt=(overrideText||input).trim();if(!txt)return
-    const rl=checkImgRateLimit()
-    if(!rl.ok){setErr(`Limit obrázků: počkejte ještě ${rl.wait} minut (max 6 za 90 min)`);return}
+    if(!isLoggedIn){setErr('Pro generování se přihlaste.');return}
     setInput('');setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
     const tmpUser={id:uid(),role:'user',content:txt,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
     else setMsgs(p=>[...p,tmpUser])
     try{
-      recordImgUsage()
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
       const result=await callEdge('generate_image',{messages:[{role:'user',content:txt}],imgModel},tk)
+      if(result.pollenSpent!==undefined){const pi={spent:result.pollenSpent,remaining:result.pollenRemaining??0,ts:Date.now()};setLocalPollenInfo(pi.spent,pi.remaining);setPollenInfo(pi)}
       const nid=uid()
       const aMsg={id:nid,role:'assistant',type:'generated_image',content:'🎨 Vygenerovaný obrázek',_imageData:result.imageData,_mimeType:result.mimeType,_prompt:result.prompt||txt,_modelId:imgModel,image_url:JSON.stringify({imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel}),created_at:new Date().toISOString()}
       if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       else{const uRow=await saveMsg(cid,'user',txt,'text',null);await saveMsg(cid,'assistant','🎨 Vygenerovaný obrázek','generated_image',{imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel});await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,dbId:uRow?.id},aMsg]);setUserMsgCnt(c=>c+1)}
       addNewAnim(nid)
-    }catch(e){setErr('Generování: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(txt)}
-    finally{setLoading(false)}
+    }catch(e){
+      const pe=parsePollenError(e.message)
+      if(pe?.type==='limit')setErr(`🌸 Pollen limit: ${pe.spent}/${POLLEN_LIMIT}p spotřebováno. Počkej ${pe.wait} min. (Model stojí ${pe.cost}p)`)
+      else if(pe?.type==='balance')setErr(`🌸 Pollinations nemá dostatek pollen. Zkus to za ${pe.wait} min.`)
+      else setErr('Generování: '+e.message)
+      if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c))
+      else setMsgs(p=>p.filter(m=>!m._tmp))
+      setInput(txt)
+    }finally{setLoading(false)}
   }
 
   const send=useCallback(async()=>{
-    if(imgMode==='generate_image'){return send_img();}
+    if(imgMode==='generate_image'){send_img();return}
     if((!input.trim()&&!atts.length)||loading||!activeConv)return
     const cid=activeConv.id,userText=input.trim()||atts.map(a=>a.name).join(', '),isLocal=activeConv.local
     const apiMode=isLoggedIn?detectAutoMode(userText,imgMode):'chat'
@@ -733,29 +810,26 @@ export default function Chat({ session }) {
     const tmpUser={id:uid(),role:'user',content:userText,type:'text',created_at:new Date().toISOString(),_tmp:true,_atts:atts.map(a=>({id:a.id,name:a.name,type:a.type,preview:a.preview}))}
     setInput('');setAtts([]);setLoading(true);setErr(null)
     const prev=isLocal?(activeConv.messages??[]):msgs
-    if(isLocal){setConvs(p=>p.map(c=>{if(c.id!==cid)return c;const title=isFirst?userText.slice(0,38)+(userText.length>38?'…':''):c.title;return{...c,title,messages:[...(c.messages??[]),tmpUser]}}))}
+    if(isLocal)setConvs(p=>p.map(c=>{if(c.id!==cid)return c;const title=isFirst?userText.slice(0,38)+(userText.length>38?'…':''):c.title;return{...c,title,messages:[...(c.messages??[]),tmpUser]}}))
     else{setMsgs(p=>[...p,tmpUser]);if(isFirst&&activeConv.title==='Nová konverzace')autoTitle(cid,userText)}
     try{
       const history=[...prev,tmpUser].map(m=>({role:m.role,content:m.id===tmpUser.id&&api.length>0?api:[{type:'text',text:m.content}]}))
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
       const payload={messages:history,system:sysPmt,thinking,memory}
-      if(apiMode==='image_search'){}
-      if(aiModel!=='default')payload.preferredModel=aiModel
-      if(apiMode==='image_search'){
-        const rl=checkImgRateLimit()
-        if(!rl.ok){setErr(`Limit: počkejte ${rl.wait} min`);setLoading(false);setMsgs(prev);return}
-      }
+      // Model mapping: default=Gemma27B, gemma-3-12b, gemini-auto=null (server použije Gemini 3.1)
+      if(aiModel==='gemma-3-12b')payload.preferredModel='gemma-3-12b'
+      else if(aiModel==='gemini-auto')payload.preferredModel=undefined
+      // default → server Gemma 27B
       const result=await callEdge(apiMode,payload,tk)
       const nid=uid();let aMsg
-      if(result.type==='image_search'){
-        aMsg={id:nid,role:'assistant',type:'image_search',content:`📷 ${result.images?.length??0} fotografií`,_images:result.images,_query:result.query,image_url:JSON.stringify(result.images),created_at:new Date().toISOString()}
-      }else{
+      if(result.type==='image_search'){aMsg={id:nid,role:'assistant',type:'image_search',content:`📷 ${result.images?.length??0} fotografií`,_images:result.images,_query:result.query,image_url:JSON.stringify(result.images),created_at:new Date().toISOString()}}
+      else{
         aMsg={id:nid,role:'assistant',type:'text',content:result.text??'(prázdná odpověď)',created_at:new Date().toISOString()}
         setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
         setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*10,1000),10000))
       }
       addNewAnim(nid)
-      if(isLocal){setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))}
+      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       else{
         const uRow=await saveMsg(cid,'user',userText,'text',null)
         if(aMsg.type==='image_search')await saveMsg(cid,'assistant',aMsg.content,'image_search',aMsg._images)
@@ -772,7 +846,7 @@ export default function Chat({ session }) {
   const displayMsgs=showStarred?(activeConv?.local?(activeConv.messages??[]):msgs).filter(m=>starred.has(m.id)):(activeConv?.local?(activeConv.messages??[]):msgs)
   const canSend=(input.trim()||atts.length>0)&&!loading
   const userInitial=session?(session.user.user_metadata?.full_name||session.user.email||'U')[0].toUpperCase():'?'
-  const currentAILabel=AI_MODELS.find(m=>m.id===aiModel)?.short||'Auto'
+  const currentAILabel=AI_MODELS.find(m=>m.id===aiModel)?.short||'G27B'
 
   function getImgData(msg){
     if(msg._images||msg._imageData||msg._quizData)return msg
@@ -780,16 +854,13 @@ export default function Chat({ session }) {
     return msg
   }
 
-  const phs={chat:thinking?'💭 Deep Thinking…':'Napište zprávu… (Enter = odeslat)',image_search:'🔍 Popište co hledáte…',generate_image:'🎨 Popište obrázek…'}
+  const phs={chat:thinking?'💭 Deep Thinking (Gemini 2.5)…':'Napište zprávu… (Enter = odeslat, Ctrl+/ = zkratky)',image_search:'🔍 Popište co hledáte…',generate_image:'🎨 Popište obrázek (Pollinations.ai)…'}
 
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0}
-    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrl};border-radius:3px}
-    ::-webkit-scrollbar-thumb:hover{background:${t.accent}66}
+    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrl};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${t.accent}66}
     textarea,input{font-family:inherit}textarea{resize:none;outline:none;border:none;background:transparent}input{outline:none;border:none;background:transparent}button{cursor:pointer;border:none;background:none;font-family:inherit}
-
-    /* ── Core animations ── */
     @keyframes slideUp{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
     @keyframes fadeInScale{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
@@ -798,61 +869,34 @@ export default function Chat({ session }) {
     @keyframes sparkleIn{from{opacity:0;transform:translateY(8px) scale(.85)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes checkIn{from{opacity:0;transform:scale(.3) rotate(-20deg)}to{opacity:1;transform:scale(1) rotate(0deg)}}
     @keyframes slideUpBanner{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
-
-    /* ── Aurora/ambient background ── */
     @keyframes auroraFloat{0%,100%{transform:translateX(-50%) scale(1) rotate(0deg)}33%{transform:translateX(-52%) scale(1.12) rotate(2deg)}66%{transform:translateX(-48%) scale(1.08) rotate(-2deg)}}
     @keyframes auroraFloat2{0%,100%{transform:scale(1) rotate(0deg);opacity:.6}50%{transform:scale(1.2) rotate(5deg);opacity:.9}}
-
-    /* ── Message animations ── */
     @keyframes msgBounce{0%{opacity:0;transform:translateY(18px) scale(.93)}55%{transform:translateY(-4px) scale(1.015)}80%{transform:translateY(1px) scale(.998)}100%{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes msgSlideRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes msgSlideLeft{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
-
-    /* ── Typing/loading ── */
+    @keyframes msgSlideRight{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
     @keyframes pu{0%,100%{opacity:.15;transform:scale(.7) translateY(2px)}50%{opacity:1;transform:scale(1) translateY(0)}}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
     @keyframes thinkPulse{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1)}}
     @keyframes thinkSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-
-    /* ── Button/UI animations ── */
     @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)}70%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
     @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-    @keyframes sendPop{0%{transform:scale(1)}30%{transform:scale(.88)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
-    @keyframes starPop{0%{transform:scale(1)}40%{transform:scale(1.4) rotate(15deg)}100%{transform:scale(1) rotate(0deg)}}
-    @keyframes ripple{from{transform:scale(0);opacity:.6}to{transform:scale(3);opacity:0}}
-
-    /* ── Welcome screen ── */
-    @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
     @keyframes hintAppear{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-
-    /* ── Sidebar ── */
     @keyframes convAppear{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
-
-    /* ── Image generation progress ── */
-    @keyframes progressPulse{0%,100%{opacity:.4}50%{opacity:1}}
     @keyframes shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
-
-    /* ── Class applications ── */
+    @keyframes progressPulse{0%,100%{opacity:.5}50%{opacity:1}}
     .msg-new-ai{animation:msgBounce .55s cubic-bezier(.34,1.56,.64,1) both}
     .msg-new-user{animation:msgSlideRight .35s cubic-bezier(.34,1.56,.64,1) both}
     .msg-old{animation:fadeIn .2s ease both}
     .dot span{display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.accent};margin:0 2.5px;animation:pu 1.4s infinite ease-in-out}
     .dot span:nth-child(2){animation-delay:.22s}.dot span:nth-child(3){animation-delay:.44s}
     .cr:hover{background:${t.active}!important}.cr:hover .cr-act{opacity:1!important}
-    .cr{transition:background .12s ease,border-left-color .15s ease}
-    .ib:hover{opacity:.65}
-    .ib{transition:opacity .15s}
+    .cr{transition:background .12s ease}
+    .ib:hover{opacity:.65}.ib{transition:opacity .15s}
     .err-shake{animation:shake .5s ease}
     .hint-btn{animation:hintAppear .4s ease both}
-    .hint-btn:nth-child(1){animation-delay:.05s}
-    .hint-btn:nth-child(2){animation-delay:.1s}
-    .hint-btn:nth-child(3){animation-delay:.15s}
-    .hint-btn:nth-child(4){animation-delay:.2s}
+    .hint-btn:nth-child(1){animation-delay:.05s}.hint-btn:nth-child(2){animation-delay:.1s}.hint-btn:nth-child(3){animation-delay:.15s}.hint-btn:nth-child(4){animation-delay:.2s}
     .conv-item{animation:convAppear .25s ease both}
-    .send-active{animation:sendPop .25s ease}
-    .star-active{animation:starPop .35s cubic-bezier(.34,1.56,.64,1)}
     .shimmer{background:linear-gradient(90deg,${t.btn} 25%,${t.active} 50%,${t.btn} 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
-
     @media(max-width:768px){.sidebar{position:fixed!important;top:0;left:0;bottom:0;z-index:30;box-shadow:4px 0 32px rgba(0,0,0,.6)}.sov{display:block!important}}
   `
 
@@ -869,7 +913,7 @@ export default function Chat({ session }) {
 
       {sideOpen&&<div className="sov" onClick={()=>setSideOpen(false)} style={{display:'none',position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:29}}/>}
 
-      {/* ── SIDEBAR ────────────────────────────────────────────────────────── */}
+      {/* ── SIDEBAR ──────────────────────────────────────────────────────────── */}
       {sideOpen&&(
         <aside className="sidebar" style={{width:272,background:t.side,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
           <div style={{padding:'13px 12px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
@@ -884,12 +928,10 @@ export default function Chat({ session }) {
               </div>
             </div>
             <div style={{display:'flex',gap:4}}>
-              <button className="ib" onClick={()=>{setSearchOpen(o=>!o);setTimeout(()=>searchRef.current?.focus(),100)}}
-                style={{color:t.muted,display:'flex',padding:6,borderRadius:6,background:searchOpen?t.active:'transparent'}}>{Ic.search}</button>
+              <button className="ib" onClick={()=>{setSearchOpen(o=>!o);setTimeout(()=>searchRef.current?.focus(),100)}} style={{color:t.muted,display:'flex',padding:6,borderRadius:6,background:searchOpen?t.active:'transparent'}}>{Ic.search}</button>
               <button onClick={newConv} style={{background:t.accent,color:'#fff',borderRadius:7,padding:'5px 9px',display:'flex',alignItems:'center'}}>{Ic.plus}</button>
             </div>
           </div>
-
           {searchOpen&&(
             <div style={{padding:'8px 10px',borderBottom:`1px solid ${t.border}`}}>
               <div style={{display:'flex',alignItems:'center',gap:7,padding:'7px 10px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:9}}>
@@ -906,16 +948,14 @@ export default function Chat({ session }) {
               ))}
             </div>
           )}
-
           <div style={{flex:1,overflowY:'auto',padding:'5px'}}>
             {dbLoad?<div style={{padding:16,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
               :convs.map((c,ci)=>(
                 <div key={c.id} className="cr conv-item" onClick={()=>selectConv(c.id)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,transition:'background .12s',background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`,animationDelay:`${Math.min(ci*0.035,0.25)}s`}}>
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`,animationDelay:`${Math.min(ci*.035,.25)}s`}}>
                   {editId===c.id?(
                     <form onSubmit={e=>{e.preventDefault();renameConv(c.id,editTitle)}} style={{flex:1}} onClick={e=>e.stopPropagation()}>
-                      <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus
-                        style={{width:'100%',fontSize:13,color:t.txt,background:t.inBg,border:`1px solid ${t.accent}`,borderRadius:5,padding:'3px 7px'}}/>
+                      <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus style={{width:'100%',fontSize:13,color:t.txt,background:t.inBg,border:`1px solid ${t.accent}`,borderRadius:5,padding:'3px 7px'}}/>
                     </form>
                   ):(
                     <div style={{flex:1,minWidth:0}}>
@@ -926,8 +966,7 @@ export default function Chat({ session }) {
                   <div className="cr-act" style={{display:'flex',gap:2,opacity:0,transition:'opacity .15s',flexShrink:0}}>
                     <div style={{display:'flex',gap:2,alignItems:'center'}}>
                       {CONV_COLORS.slice(1,5).map(col=>(
-                        <button key={col} onClick={e=>{e.stopPropagation();setConvColor(c.id,col)}}
-                          style={{width:10,height:10,borderRadius:'50%',background:col,border:`1.5px solid ${c.color===col?'#fff':t.border}`,cursor:'pointer'}}/>
+                        <button key={col} onClick={e=>{e.stopPropagation();setConvColor(c.id,col)}} style={{width:10,height:10,borderRadius:'50%',background:col,border:`1.5px solid ${c.color===col?'#fff':t.border}`,cursor:'pointer'}}/>
                       ))}
                     </div>
                     <button className="ib" onClick={e=>{e.stopPropagation();setEditId(c.id);setEditTitle(c.title)}} style={{color:t.muted,display:'flex',padding:4,borderRadius:5}}>{Ic.edit}</button>
@@ -936,7 +975,6 @@ export default function Chat({ session }) {
                 </div>
               ))}
           </div>
-
           <div style={{padding:'10px 11px',borderTop:`1px solid ${t.border}`}}>
             {isLoggedIn?(
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -948,8 +986,7 @@ export default function Chat({ session }) {
                 <button className="ib" onClick={()=>supabase.auth.signOut()} style={{color:t.muted,display:'flex',padding:4}}>{Ic.out}</button>
               </div>
             ):(
-              <button onClick={()=>setShowAuth(true)}
-                style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:13,fontWeight:500}}>
+              <button onClick={()=>setShowAuth(true)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:13,fontWeight:500}}>
                 <span style={{color:t.accent}}>{Ic.user}</span><span>Přihlásit se</span>
                 <span style={{marginLeft:'auto',fontSize:10,background:t.tag,padding:'2px 7px',borderRadius:4}}>Uloží historii</span>
               </button>
@@ -959,50 +996,35 @@ export default function Chat({ session }) {
       )}
 
       {/* ── MAIN ─────────────────────────────────────────────────────────────── */}
-      <main style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+      <main id="lumi-main" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,position:'relative'}}>
+        {/* Drag & Drop overlay */}
+        {isDragging&&(
+          <div style={{position:'absolute',inset:0,zIndex:60,background:t.accent+'22',border:`2px dashed ${t.accent}`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)',animation:'fadeIn .15s ease',pointerEvents:'none'}}>
+            <div style={{textAlign:'center',color:t.accent}}>
+              <div style={{fontSize:40,marginBottom:10}}>📎</div>
+              <div style={{fontSize:16,fontWeight:600}}>Přetáhni soubory sem</div>
+              <div style={{fontSize:12,opacity:.7,marginTop:4}}>Obrázky, PDF, kód…</div>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 14px',height:52,background:t.hdr,borderBottom:`1px solid ${t.border}`,backdropFilter:'blur(12px)',flexShrink:0,gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
             <button className="ib" onClick={()=>setSideOpen(o=>!o)} style={{color:t.muted,display:'flex',padding:5,flexShrink:0}}>{Ic.menu}</button>
             <span style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{activeConv?.title||'Lumi'}</span>
-            {aiModel!=='default'&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,flexShrink:0,fontWeight:600}}>{currentAILabel}</span>}
+            <span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,flexShrink:0,fontWeight:600}}>{currentAILabel}</span>
             {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,flexShrink:0,fontWeight:600,animation:'thinkPulse 1.5s infinite'}}>💭</span>}
           </div>
           <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-            {isLoggedIn&&(
-              <button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti"
-                style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>
-                {Ic.addMem}
-              </button>
-            )}
-            <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené"
-              style={{display:'flex',padding:'5px 8px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>
-              {showStarred?Ic.starF:Ic.star}
-            </button>
-            <button className="ib" onClick={exportChat} title="Export"
-              style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>
-              {Ic.export}
-            </button>
-            <button className="ib" onClick={()=>setMdMode(m=>!m)} title="Markdown"
-              style={{display:'flex',alignItems:'center',gap:2,padding:'5px 8px',borderRadius:7,background:mdMode?t.accent+'22':t.btn,color:mdMode?t.accent:t.muted,border:`1px solid ${mdMode?t.accent:t.border}`,fontSize:11}}>
-              MD
-            </button>
-            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení"
-              style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>
-              {Ic.gear}
-            </button>
-            <button className="ib" onClick={()=>setThemeName(n=>{const ks=Object.keys(THEMES);return ks[(ks.indexOf(n)+1)%ks.length]})} title="Téma"
-              style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:14}}>
-              {THEME_LIST.find(th=>th.id===themeName)?.icon||'🎨'}
-            </button>
-            {/* Přihlásit — přesunuto sem, ale bez červené barvy */}
-            {!isLoggedIn&&(
-              <button onClick={()=>setShowAuth(true)} title="Přihlásit se"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',width:32,height:32,borderRadius:8,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>
-                {Ic.user}
-              </button>
-            )}
+            {isLoggedIn&&<button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.addMem}</button>}
+            <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>{showStarred?Ic.starF:Ic.star}</button>
+            <button className="ib" onClick={exportChat} title="Export (Ctrl+E)" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.export}</button>
+            <button className="ib" onClick={()=>setMdMode(m=>!m)} title="Markdown" style={{display:'flex',alignItems:'center',gap:2,padding:'5px 8px',borderRadius:7,background:mdMode?t.accent+'22':t.btn,color:mdMode?t.accent:t.muted,border:`1px solid ${mdMode?t.accent:t.border}`,fontSize:11}}>MD</button>
+            <button className="ib" onClick={()=>setShowShort(s=>!s)} title="Klávesové zkratky (Ctrl+/)" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:12}}>⌨️</button>
+            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.gear}</button>
+            <button className="ib" onClick={()=>setThemeName(n=>{const ks=Object.keys(THEMES);return ks[(ks.indexOf(n)+1)%ks.length]})} title="Změnit téma" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:14}}>{THEME_LIST.find(th=>th.id===themeName)?.icon||'🎨'}</button>
+            {!isLoggedIn&&<button onClick={()=>setShowAuth(true)} title="Přihlásit se" style={{display:'flex',alignItems:'center',justifyContent:'center',width:32,height:32,borderRadius:8,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>{Ic.user}</button>}
           </div>
         </header>
 
@@ -1022,7 +1044,7 @@ export default function Chat({ session }) {
         )}
 
         {/* Messages */}
-        <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,position:'relative'}}>
+        <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12}}>
           {displayMsgs.length===0&&!loading&&(
             <div style={{textAlign:'center',marginTop:'7vh',padding:'0 16px',animation:'fadeIn .5s ease',position:'relative'}}>
               <AuroraBeam t={t}/>
@@ -1030,14 +1052,10 @@ export default function Chat({ session }) {
                 <div style={{display:'flex',justifyContent:'center',marginBottom:16,animation:'welcomeFloat 4s ease-in-out infinite'}}>
                   <LumiAvatar size={64} gradient={[t.gradA,t.gradB]}/>
                 </div>
-                <div style={{fontSize:23,fontWeight:700,marginBottom:8,color:t.txt}}>
-                  {showStarred?'Žádné oblíbené zprávy':`Ahoj! Jsem ${APP_NAME}.`}
-                </div>
+                <div style={{fontSize:23,fontWeight:700,marginBottom:8,color:t.txt}}>{showStarred?'Žádné oblíbené zprávy':`Ahoj! Jsem ${APP_NAME}.`}</div>
                 {!showStarred&&(
                   <>
-                    <div style={{fontSize:13,color:t.muted,marginBottom:20,lineHeight:1.6}}>
-                      {isLoggedIn?'Chat · AI Obrázky · Fotografie · Kvízy · Live · Hlas':'Začněte psát — přihlášení není potřeba'}
-                    </div>
+                    <div style={{fontSize:13,color:t.muted,marginBottom:20,lineHeight:1.6}}>{isLoggedIn?'Chat · AI Obrázky · Fotografie · Kvízy · Live · Hlas':'Začněte psát — přihlášení není potřeba'}</div>
                     <div style={{display:'flex',gap:7,justifyContent:'center',flexWrap:'wrap',maxWidth:520,margin:'0 auto'}}>
                       {(isLoggedIn?['Jak funguje kvantové počítání?','Najdi fotky Prahy','Vygeneruj: forest at sunset','Kvíz o historii ČR']:['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']).map(hint=>(
                         <button key={hint} onClick={()=>setInput(hint)} className="hint-btn"
@@ -1059,14 +1077,12 @@ export default function Chat({ session }) {
             const isStar=starred.has(msg.id),isNew=newIds.has(msg.id),isTyp=typingIds.has(msg.id)
             const animCls=isNew?(msg.role==='user'?'msg-new-user':'msg-new-ai'):'msg-old'
             return (
-              <div key={msg.id} className={animCls}
-                style={{display:'flex',gap:8,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
+              <div key={msg.id} className={animCls} style={{display:'flex',gap:8,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
                 {msg.role==='assistant'&&<LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>}
                 <div style={{maxWidth:isWide?'94%':'80%',minWidth:40}}>
                   {msg._atts?.length>0&&(
                     <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6,justifyContent:'flex-end'}}>
-                      {msg._atts.map(a=>a.preview
-                        ?<img key={a.id} src={a.preview} alt={a.name} style={{height:60,width:60,objectFit:'cover',borderRadius:8,border:`1px solid ${t.border}`}}/>
+                      {msg._atts.map(a=>a.preview?<img key={a.id} src={a.preview} alt={a.name} style={{height:60,width:60,objectFit:'cover',borderRadius:8,border:`1px solid ${t.border}`}}/>
                         :<div key={a.id} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',background:t.pill,borderRadius:7,fontSize:12,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name.length>16?a.name.slice(0,14)+'…':a.name}</span></div>
                       )}
                     </div>
@@ -1097,14 +1113,12 @@ export default function Chat({ session }) {
                         </div>
                       </div>
                       {msg.role==='assistant'&&!msg._tmp&&(
-                        <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory} onStar={starMsg} starred={isStar}/>
+                        <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory} onStar={starMsg} starred={isStar} onReact={addReaction} reactions={reactions}/>
                       )}
                     </div>
                   )}
                 </div>
-                {msg.role==='user'&&(
-                  <div style={{width:28,height:28,borderRadius:8,background:isLoggedIn?t.accent+'88':t.ua,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'#fff',flexShrink:0,marginTop:2}}>{isLoggedIn?userInitial:'?'}</div>
-                )}
+                {msg.role==='user'&&<div style={{width:28,height:28,borderRadius:8,background:isLoggedIn?t.accent+'88':t.ua,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'#fff',flexShrink:0,marginTop:2}}>{isLoggedIn?userInitial:'?'}</div>}
               </div>
             )
           })}
@@ -1114,72 +1128,48 @@ export default function Chat({ session }) {
               <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
               <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:80}}>
                 {imgMode==='generate_image'
-                  ? <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/>
-                      <span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span>
-                    </div>
-                  : imgMode==='image_search'
-                    ? <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/>
-                        <span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span>
-                      </div>
-                    : thinking
-                      ? <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/>
-                          <span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span>
-                        </div>
-                      : <div className="dot"><span/><span/><span/></div>
+                  ?<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span></div>
+                  :imgMode==='image_search'
+                    ?<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span></div>
+                    :thinking
+                      ?<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/><span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span></div>
+                      :<div className="dot"><span/><span/><span/></div>
                 }
               </div>
             </div>
           )}
-          {err&&<div className="err-shake" style={{padding:'9px 13px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:8,wordBreak:'break-word'}}>
-            <span style={{flexShrink:0}}>⚠️</span><span>{err}</span>
-          </div>}
+          {err&&<div className="err-shake" style={{padding:'9px 13px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:8,wordBreak:'break-word'}}><span style={{flexShrink:0}}>⚠️</span><span>{err}</span><button onClick={()=>setErr(null)} style={{marginLeft:'auto',color:'#fca5a5',flexShrink:0}}>{Ic.x}</button></div>}
           <div ref={endRef}/>
         </div>
 
-        {/* ── INPUT AREA ────────────────────────────────────────────────────── */}
+        {/* ── INPUT AREA ──────────────────────────────────────────────────── */}
         <div style={{padding:'8px 12px 10px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
 
           {/* Toolbar */}
           {isLoggedIn&&(
             <div style={{display:'flex',gap:5,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
-
-              {/* Live */}
-              <button onClick={()=>setShowLive(true)}
-                style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(239,68,68,.15)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)',animation:'livePulse 2s infinite',cursor:'pointer',fontFamily:'inherit'}}>
+              <button onClick={()=>setShowLive(true)} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(239,68,68,.15)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)',animation:'livePulse 2s infinite',cursor:'pointer',fontFamily:'inherit'}}>
                 {Ic.live} Live
               </button>
-
-              {/* Nástroje */}
               <ToolDropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode}>
                 <div style={{padding:'6px 0'}}>
-                  {[{id:'chat',icon:'💬',label:'Chat',color:t.accent},{id:'generate_image',icon:'🎨',label:'AI Obrázek',sub:'Pollinations.ai',color:t.purple},{id:'image_search',icon:'📷',label:'Hledat fotografie',sub:'Unsplash',color:t.green}].map(item=>(
+                  {[{id:'chat',icon:'💬',label:'Chat',sub:'Gemma 3 27B',color:t.accent},{id:'generate_image',icon:'🎨',label:'AI Obrázek',sub:'Pollinations.ai',color:t.purple},{id:'image_search',icon:'📷',label:'Hledat fotografie',sub:'Unsplash',color:t.green}].map(item=>(
                     <button key={item.id} onClick={()=>setImgMode(item.id)}
                       style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:imgMode===item.id?item.color+'22':'transparent',color:imgMode===item.id?item.color:t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
                       <span style={{fontSize:16}}>{item.icon}</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:imgMode===item.id?600:400}}>{item.label}</div>
-                        {item.sub&&<div style={{fontSize:10,color:t.muted}}>{item.sub}</div>}
-                      </div>
+                      <div style={{flex:1}}><div style={{fontWeight:imgMode===item.id?600:400}}>{item.label}</div><div style={{fontSize:10,color:t.muted}}>{item.sub}</div></div>
                       {imgMode===item.id&&<span style={{color:item.color}}>{Ic.check}</span>}
                     </button>
                   ))}
                   <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                  <button onClick={()=>setQuizMode(m=>!m)}
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:quizMode?'#f59e0b22':'transparent',color:quizMode?'#f59e0b':t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                    <span style={{fontSize:16}}>🎓</span>
-                    <div style={{fontWeight:quizMode?600:400}}>Kvíz</div>
-                    {quizMode&&<span style={{color:'#f59e0b'}}>{Ic.check}</span>}
+                  <button onClick={()=>setQuizMode(m=>!m)} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:quizMode?'#f59e0b22':'transparent',color:quizMode?'#f59e0b':t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
+                    <span style={{fontSize:16}}>🎓</span><div style={{fontWeight:quizMode?600:400}}>Kvíz</div>{quizMode&&<span style={{color:'#f59e0b',marginLeft:'auto'}}>{Ic.check}</span>}
                   </button>
                 </div>
               </ToolDropdown>
-
-              {/* Model */}
               <ToolDropdown t={t} label="Model" icon={Ic.model} accent={t.purple} active={aiModel!=='default'||thinking}>
                 <div style={{padding:'6px 0'}}>
-                  <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>Chat</div>
+                  <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>Chat model</div>
                   {AI_MODELS.map(m=>(
                     <button key={m.id} onClick={()=>setAiModel(m.id)}
                       style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:aiModel===m.id?t.purple+'22':'transparent',color:aiModel===m.id?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
@@ -1188,16 +1178,15 @@ export default function Chat({ session }) {
                     </button>
                   ))}
                   <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                  <button onClick={()=>setThinking(x=>!x)}
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:thinking?t.purple+'22':'transparent',color:thinking?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
+                  <button onClick={()=>setThinking(x=>!x)} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:thinking?t.purple+'22':'transparent',color:thinking?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
                     <span style={{fontSize:14}}>💭</span>
-                    <div style={{flex:1}}><div style={{fontWeight:thinking?600:400}}>Deep Thinking</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>Gemini 2.5 — pomalejší, přesnější</div></div>
+                    <div style={{flex:1}}><div style={{fontWeight:thinking?600:400}}>Deep Thinking</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>Gemini 2.5 — přesnější</div></div>
                     {thinking&&<span style={{color:t.purple,flexShrink:0}}>{Ic.check}</span>}
                   </button>
                   {imgMode==='generate_image'&&(
                     <>
                       <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>Obrázky · Pollinations.ai</div>
+                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>AI Obrázky · Pollinations.ai</div>
                       {IMG_MODELS.map(m=>(
                         <button key={m.id} onClick={()=>setImgModel(m.id)}
                           style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:imgModel===m.id?t.purple+'22':'transparent',color:imgModel===m.id?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
@@ -1209,42 +1198,32 @@ export default function Chat({ session }) {
                   )}
                 </div>
               </ToolDropdown>
-
-              {/* Aktivní mód + limit badge */}
               {imgMode!=='chat'&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:imgMode==='generate_image'?t.purple+'22':'rgba(34,197,94,.15)',color:imgMode==='generate_image'?t.purple:t.green,fontWeight:600}}>
-                {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name||'Pollinations'}`:' 📷 Fotky'}
+                {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name||'FLUX'}`:' 📷 Fotky'}
               </span>}
-              {imgMode==='generate_image'&&<ImgLimitBadge t={t}/>}
+              {imgMode==='generate_image'&&<PollenBadge t={t} imgModel={imgModel} pollenInfo={pollenInfo}/>}
             </div>
           )}
 
           {/* Quiz panel */}
           {quizMode&&(
             <div style={{marginBottom:8,padding:'12px',background:t.tag,borderRadius:10,border:`1px solid #f59e0b44`,animation:'dropIn .25s cubic-bezier(.34,1.56,.64,1)'}}>
-              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()}
-                placeholder="Téma kvízu…"
+              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…"
                 style={{width:'100%',padding:'8px 12px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:10,boxSizing:'border-box'}}/>
               <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                   <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Počet:</span>
                   <div style={{display:'flex',gap:4}}>{QUIZ_COUNTS.map(n=>(
-                    <button key={n} onClick={()=>setQuizCount(n)}
-                      style={{padding:'4px 8px',borderRadius:6,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:28,transition:'all .15s'}}>
-                      {n}
-                    </button>
+                    <button key={n} onClick={()=>setQuizCount(n)} style={{padding:'4px 8px',borderRadius:6,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:28,transition:'all .15s'}}>{n}</button>
                   ))}</div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                   <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Obtížnost:</span>
                   <div style={{display:'flex',gap:4}}>{QUIZ_DIFFS.map(([v,l])=>(
-                    <button key={v} onClick={()=>setQuizDiff(v)}
-                      style={{padding:'4px 9px',borderRadius:6,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400,transition:'all .15s'}}>
-                      {l}
-                    </button>
+                    <button key={v} onClick={()=>setQuizDiff(v)} style={{padding:'4px 9px',borderRadius:6,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400,transition:'all .15s'}}>{l}</button>
                   ))}</div>
                 </div>
-                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading}
-                  style={{padding:'6px 16px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto',transition:'all .15s'}}>
+                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'6px 16px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto',transition:'all .15s'}}>
                   Start 🎓
                 </button>
               </div>
@@ -1257,33 +1236,37 @@ export default function Chat({ session }) {
               {atts.map(a=>(
                 <div key={a.id} style={{position:'relative',animation:'sparkleIn .25s ease'}}>
                   {a.preview?<img src={a.preview} alt={a.name} style={{height:46,width:46,objectFit:'cover',borderRadius:7,border:`1px solid ${t.border}`,display:'block'}}/>
-                    :<div style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',background:t.pill,borderRadius:7,fontSize:12,color:t.txt}}>
-                      {a.type.includes('pdf')?Ic.pdf:Ic.file}
-                      <span style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name.length>16?a.name.slice(0,14)+'…':a.name}</span>
-                    </div>}
-                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))}
-                    style={{position:'absolute',top:-5,right:-5,width:16,height:16,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer'}}>
-                    {Ic.x}
-                  </button>
+                    :<div style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',background:t.pill,borderRadius:7,fontSize:12,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name.length>16?a.name.slice(0,14)+'…':a.name}</span></div>}
+                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))} style={{position:'absolute',top:-5,right:-5,width:16,height:16,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer'}}>{Ic.x}</button>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Input box — hlas je teď uvnitř */}
-          <div style={{display:'flex',alignItems:'flex-end',gap:6,padding:'9px 11px',background:t.inBg,border:`1.5px solid ${imgMode!=='chat'?t.purple:thinking?t.purple:t.inBrd}`,borderRadius:14,transition:'border-color .2s'}}>
+          {/* Vlastní věc #5 — Markdown toolbar (toggle) */}
+          {showMdBar&&mdMode&&(
+            <MdToolbar t={t} taRef={taRef} input={input} setInput={setInput}/>
+          )}
+
+          {/* Input box */}
+          <div style={{display:'flex',alignItems:'flex-end',gap:6,padding:'9px 11px',background:t.inBg,border:`1.5px solid ${imgMode!=='chat'?t.purple:thinking?t.purple:t.inBrd}`,borderRadius:14,transition:'border-color .2s',outline:'none'}}
+            onFocus={e=>e.currentTarget.style.borderColor=imgMode!=='chat'||thinking?t.purple:t.accent}
+            onBlur={e=>e.currentTarget.style.borderColor=imgMode!=='chat'||thinking?t.purple:t.inBrd}>
             <textarea ref={taRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey}
               placeholder={phs[imgMode]} rows={1}
               style={{flex:1,fontSize:14,lineHeight:1.5,color:t.txt,caretColor:t.accent,maxHeight:120,overflowY:'auto',paddingTop:2}}
               onInput={e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}}/>
             <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
+              {/* Vlastní věc #1 — Word count */}
+              {wordCount>0&&<span style={{fontSize:10,color:t.muted,flexShrink:0}}>{wordCount}s</span>}
               {input.length>80&&<span style={{fontSize:10,color:input.length>1800?t.danger:input.length>1200?'#f59e0b':t.muted,flexShrink:0}}>{input.length}</span>}
-              {/* Hlas přesunut sem */}
-              <VoiceBtn t={t} compact onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
-              <button className="ib" onClick={()=>fileRef.current.click()} style={{color:t.muted,display:'flex',padding:5}} title="Přidat soubor">{Ic.clip}</button>
+              {/* Vlastní věc #5 — Md toolbar toggle */}
+              {mdMode&&<button onClick={()=>setShowMdBar(m=>!m)} title="Markdown formátování" style={{display:'flex',padding:5,borderRadius:7,background:showMdBar?t.accent+'22':t.btn,color:showMdBar?t.accent:t.muted,border:`1px solid ${showMdBar?t.accent:t.border}`,fontSize:11,cursor:'pointer',transition:'all .15s'}}>Md</button>}
+              <VoiceBtn t={t} onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
+              <button className="ib" onClick={()=>fileRef.current.click()} style={{color:t.muted,display:'flex',padding:5}} title="Přidat soubor (nebo přetáhni)">{Ic.clip}</button>
               <button onClick={send} disabled={!canSend}
                 style={{width:34,height:34,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',transform:canSend?'scale(1)':'scale(.92)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 4px 14px ${imgMode==='generate_image'||thinking?t.purple:t.accent}44`:'none'}}
-                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.1)'}}
+                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.12)'}}
                 onMouseOut={e=>{if(canSend)e.currentTarget.style.transform='scale(1)'}}>
                 {Ic.send}
               </button>
@@ -1291,10 +1274,10 @@ export default function Chat({ session }) {
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.py,.js,.ts,.html,.css" style={{display:'none'}} onChange={onFile}/>
 
-          {/* Beta disclaimer */}
+          {/* Beta + tips */}
           <div style={{fontSize:10,color:t.muted,textAlign:'center',marginTop:6,lineHeight:1.5}}>
             <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 5px',borderRadius:3,fontWeight:700,marginRight:5}}>BETA</span>
-            Lumi může dělat chyby — vždy ověřte důležité informace
+            Lumi může dělat chyby · <span style={{cursor:'pointer',textDecoration:'underline'}} onClick={()=>setShowShort(true)}>Ctrl+/ = zkratky</span>
             {isLoggedIn?' · Paměť + Historie v Supabase':' · Přihlaste se pro plné funkce'}
           </div>
         </div>
@@ -1305,9 +1288,8 @@ export default function Chat({ session }) {
       {showSet    &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory} aiModel={aiModel} setAiModel={setAiModel} onAddMemory={()=>setShowAddMem(true)}/>}
       {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
       {showAddMem &&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
-
-      {/* Cookie banner */}
-      {!cookies&&<CookieBanner t={t} onAccept={()=>{setCookies(true);localStorage.setItem('lumi_cookies','1')}}/>}
+      {showShort  &&<ShortcutsModal t={t} onClose={()=>setShowShort(false)}/>}
+      {!cookies   &&<CookieBanner t={t} onAccept={()=>{setCookies(true);localStorage.setItem('lumi_cookies','1')}}/>}
     </div>
   )
 }
