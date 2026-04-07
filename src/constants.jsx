@@ -72,6 +72,7 @@ export const THEME_LIST=[
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export const uid=()=>Math.random().toString(36).slice(2)
 export const fmtTime=ts=>new Date(ts).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})
+export const fmtRelTime=ts=>{const diff=Date.now()-new Date(ts).getTime(),min=Math.floor(diff/60000);if(min<1)return'právě teď';if(min<60)return`před ${min} min`;const h=Math.floor(min/60);if(h<24)return`před ${h} h`;return new Date(ts).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}
 export const fmtDate=ts=>{
   const d=new Date(ts),now=new Date()
   if(d.toDateString()===now.toDateString())return'Dnes'

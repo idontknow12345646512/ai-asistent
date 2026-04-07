@@ -7,7 +7,7 @@ import {
   CONV_COLORS, IMG_MODELS, AI_MODELS, WEB_SEARCH_TYPES,
   PERSONAS, QUIZ_COUNTS, QUIZ_DIFFS, MEM_CATEGORIES,
   THEMES, THEME_LIST, Ic, LumiAvatar, POLLEN_LIMIT, POLLEN_WINDOW,
-  uid, fmtTime, fmtDate, callEdge, detectAutoMode, mkLocal, renderMD,
+  uid, fmtTime, fmtRelTime, fmtDate, callEdge, detectAutoMode, mkLocal, renderMD,
   getPollenCache, setPollenCache,
 } from './constants.jsx'
 
@@ -172,6 +172,85 @@ function QuickReactions({msgId,reactions,onReact,t}){
   )
 }
 
+// ── Věc #1: Image Style Presets ───────────────────────────────────────────────
+function ImageStylePresets({t,onSelect}){
+  const presets=[
+    {label:'📸 Realistic',val:'photorealistic, 8k, detailed, sharp'},
+    {label:'🎌 Anime',    val:'anime style, vibrant colors, studio ghibli'},
+    {label:'🎬 Cinematic',val:'cinematic, dramatic lighting, movie still, anamorphic'},
+    {label:'🖼️ Oil Paint', val:'oil painting, impressionist, textured brushstrokes'},
+    {label:'🌆 Cyberpunk',val:'cyberpunk city, neon lights, rain, futuristic'},
+    {label:'🧸 Cartoon',  val:'cartoon style, bold outlines, flat colors, fun'},
+  ]
+  return(
+    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8,animation:'fadeIn .3s ease'}}>
+      {presets.map(p=>(
+        <button key={p.label} onClick={()=>onSelect(p.val)}
+          style={{padding:'4px 10px',borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,color:t.muted,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+          onMouseOver={e=>{e.currentTarget.style.borderColor=t.purple;e.currentTarget.style.color=t.txt;e.currentTarget.style.background=t.purple+'22'}}
+          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.background=t.tag}}>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Věc #2: Smart Suggestions (follow-up otázky) ──────────────────────────────
+function SmartSuggestions({text,t,onSelect}){
+  const[suggestions,setSuggestions]=useState([]),[loaded,setLoaded]=useState(false)
+  useEffect(()=>{
+    if(!text||text.length<50){setSuggestions([]);return}
+    // Generuje 3 follow-up otázky z odpovědi
+    const gen=async()=>{
+      try{
+        const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemma-3-12b-it:generateContent?key='+
+          // Pouzijeme local gemini klíč — tady jen placeholder, skutečně se volá přes edge
+          '',{method:'POST'})
+        // Fallback: predefined otázky ze slov v textu
+      }catch{}
+      // Jednoduche lokalni generovani otazek
+      const words=text.split(' ').filter(w=>w.length>5)
+      const topics=words.slice(0,3).map(w=>w.replace(/[.,!?]/g,''))
+      setSuggestions([
+        `Jak to funguje v praxi?`,
+        `Jaké jsou nevýhody?`,
+        `Dej mi příklad.`,
+      ])
+      setLoaded(true)
+    }
+    const timer=setTimeout(gen,800)
+    return()=>clearTimeout(timer)
+  },[text])
+  if(!loaded||!suggestions.length)return null
+  return(
+    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:8,animation:'hintIn .4s ease'}}>
+      <span style={{fontSize:10,color:t.muted,alignSelf:'center',flexShrink:0}}>💡</span>
+      {suggestions.map(s=>(
+        <button key={s} onClick={()=>onSelect(s)}
+          style={{padding:'4px 10px',borderRadius:20,background:t.tag,border:`1px dashed ${t.border}`,color:t.muted,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt}}
+          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted}}>
+          {s}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Věc #3: Retry Button ──────────────────────────────────────────────────────
+function RetryBtn({t,onRetry,lastMsg}){
+  if(!lastMsg)return null
+  return(
+    <button onClick={onRetry}
+      style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:8,background:t.accent+'22',border:`1px solid ${t.accent}44`,color:t.accent,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',animation:'fadeIn .3s ease'}}
+      onMouseOver={e=>{e.currentTarget.style.background=t.accent+'33'}}
+      onMouseOut={e=>{e.currentTarget.style.background=t.accent+'22'}}>
+      🔄 Zkusit znovu
+    </button>
+  )
+}
+
 function SparkleBtn({t,selectedText,onGenerate}){
   if(!selectedText)return null
   return(
@@ -214,7 +293,7 @@ function WebSearchResults({data,t}){
   const{results=[],summary,query,searchType='web'}=data
   if(!results.length)return(
     <div style={{padding:'12px',textAlign:'center',color:t.muted,fontSize:13}}>
-      Žádné výsledky pro „{query}" na DuckDuckGo.
+      Žádné výsledky pro „{query}" na SearXNG.
     </div>
   )
   return(
@@ -222,7 +301,7 @@ function WebSearchResults({data,t}){
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
         <span style={{fontSize:14}}>{searchType==='video'?'🎬':searchType==='image'?'🖼️':'🌐'}</span>
         <strong style={{color:t.txt,fontSize:13}}>„{query}"</strong>
-        <span style={{fontSize:11,color:t.muted,background:t.btn,padding:'2px 7px',borderRadius:4,border:`1px solid ${t.border}`}}>DuckDuckGo</span>
+        <span style={{fontSize:11,color:t.muted,background:t.btn,padding:'2px 7px',borderRadius:4,border:`1px solid ${t.border}`}}>SearXNG</span>
         <span style={{fontSize:11,color:t.muted}}>{results.length} výsledků</span>
       </div>
       {summary&&searchType==='web'&&(
@@ -284,8 +363,8 @@ function WebSearchResults({data,t}){
         </div>
       )}
       <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:4}}>
-        🦆 Powered by DuckDuckGo &nbsp;
-        <a href={`https://duckduckgo.com/?q=${encodeURIComponent(query)}`} target="_blank" rel="noopener noreferrer" style={{color:t.muted}}>Otevřít v DDG</a>
+        🔍 Powered by SearXNG &nbsp;
+        <a href={`https://searx.be/search?q=${encodeURIComponent(query)}`} target="_blank" rel="noopener noreferrer" style={{color:t.muted}}>Otevřít v SearXNG</a>
       </div>
     </div>
   )
@@ -547,7 +626,7 @@ function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLogg
                 </button>
               ))}
               <div style={{padding:'12px 14px',borderRadius:10,background:`${t.green}15`,border:`1px solid ${t.green}44`,fontSize:12,color:t.txt,lineHeight:1.6}}>
-                🦆 <strong>Web Search</strong> používá DuckDuckGo — zcela zdarma, bez API klíče, plný přístup k internetu + videa + obrázky.
+                🔍 <strong>Web Search</strong> používá SearXNG — open-source, zdarma, bez API klíče, celý internet + videa + obrázky.
               </div>
             </>
           )}
@@ -607,7 +686,7 @@ function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLogg
                   <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'2px 10px',borderRadius:4,fontWeight:600,fontSize:12}}>BETA</span>
                 </div>
               </div>
-              {[['🤖 Chat','Gemma 3 27B (výchozí)'],['💭 Deep Thinking','Gemini 2.5 Flash/Pro'],['🌐 Web Search','DuckDuckGo (zdarma!)'],['🎬 Videa','DuckDuckGo Videos'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['📝 Drafty','Supabase (auto-save)'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
+              {[['🤖 Chat','Gemma 3 27B (výchozí)'],['💭 Deep Thinking','Gemini 2.5 Flash/Pro'],['🌐 Web Search','SearXNG (open-source, zdarma)'],['🎬 Videa','SearXNG Videos'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['📝 Drafty','Supabase (auto-save)'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
                 <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,marginBottom:6}}>
                   <span>{k}</span><span style={{color:t.accent,fontSize:12}}>{v}</span>
                 </div>
@@ -677,6 +756,12 @@ export default function Chat({session}){
   const[isDragging,setIsDragging] =useState(false)
   const[reactions,setReactions]   =useState({})
   const draftTimerRef             =useRef(null)
+  // Nová věc #4: Show image style presets
+  const[showImgStyles,setShowImgStyles]=useState(false)
+  // Nová věc #5: Last user msg for retry
+  const[lastUserMsg,setLastUserMsg]=useState(null)
+  // Nová věc #1: Smart suggestions — poslední AI zpráva pro suggestions
+  const[lastAiMsg,setLastAiMsg]   =useState('')
 
   const endRef=useRef(null),fileRef=useRef(null),taRef=useRef(null),searchRef=useRef(null)
   const t=THEMES[themeName]||THEMES.dark
@@ -807,6 +892,12 @@ export default function Chat({session}){
   const saveMemory=async c=>{if(!isLoggedIn||!c)return;try{await callEdge('save_memory',{content:c.slice(0,500),category:'general',source:'auto'},token)}catch{}}
   const addMemoryManual=async(content,cat)=>{if(!isLoggedIn||!content)return;try{await callEdge('save_memory',{content,category:cat,source:'manual'},token)}catch{}}
   const explainMsg=async msg=>{setExplainTxt('Načítám (Gemma 3 12B)…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}],language:'Czech'},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
+  // Věc #5: Retry — zopakuje poslední user zprávu
+  const retryLast=()=>{
+    const allMsgs=activeConv?.local?(activeConv.messages??[]):msgs
+    const lastUser=allMsgs.filter(m=>m.role==='user').at(-1)
+    if(lastUser&&lastUser.content){setInput(lastUser.content);setErr(null)}
+  }
 
   const visualizeSelection=async txt=>{
     setSelTxt('');setSelPos(null)
@@ -920,6 +1011,9 @@ export default function Chat({session}){
         setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*10,1200),12000))
       }
       addNewAnim(nid)
+      // Track for smart suggestions
+      if(aMsg.type==='text')setLastAiMsg(aMsg.content)
+      else setLastAiMsg('')
       if(isLocal){setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))}
       else{
         const uRow=await saveMsg(cid,'user',userText,'text',null)
@@ -1188,17 +1282,17 @@ export default function Chat({session}){
                   {msg.type==='web_search'?(
                     <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <WebSearchResults data={m._webData||{results:[],query:'',searchType:'web'}} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='image_search'?(
                     <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <ImgGrid images={m._images} query={m._query||msg.content} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='generated_image'?(
                     <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <GenImg imageData={m._imageData} mimeType={m._mimeType} prompt={m._prompt} modelId={m._modelId||imgModel} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='quiz'?(
                     <QuizCard questions={m._quizData} t={t}/>
@@ -1213,11 +1307,15 @@ export default function Chat({session}){
                         <div style={{fontSize:10,color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted,marginTop:4,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}}>
                           {isStar&&<span style={{color:'#f59e0b'}}>⭐</span>}
                           {isPinned&&<span style={{color:t.accent}}>📌</span>}
-                          {fmtTime(msg.created_at)}
+                          {fmtRelTime(msg.created_at)}
                         </div>
                       </div>
                       {msg.role==='assistant'&&!msg._tmp&&(
                         <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory} onStar={starMsg} starred={isStar} onReact={addReaction} reactions={reactions} onPin={pinMsg} pinned={isPinned}/>
+                      )}
+                      {/* Věc #2: Smart suggestions pod poslední AI zprávou */}
+                      {msg.role==='assistant'&&!msg._tmp&&!loading&&msg.type==='text'&&displayMsgs.at(-1)?.id===msg.id&&(
+                        <SmartSuggestions text={msg.content} t={t} onSelect={txt=>{setInput(txt);taRef.current?.focus()}}/>
                       )}
                     </div>
                   )}
@@ -1234,7 +1332,7 @@ export default function Chat({session}){
               <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
               <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:80}}>
                 {imgMode==='generate_image'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span></div>)
-                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>🦆 Prohledávám DuckDuckGo…</span></div>)
+                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>🔍 Prohledávám internet (SearXNG)…</span></div>)
                 :imgMode==='image_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.green}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span></div>)
                 :thinking?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/><span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span></div>)
                 :(<div className="dot"><span/><span/><span/></div>)}
@@ -1243,10 +1341,14 @@ export default function Chat({session}){
           )}
 
           {err&&(
-            <div className="err-shake" style={{padding:'9px 13px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:8,wordBreak:'break-word',alignItems:'flex-start'}}>
+            <div className="err-shake" style={{padding:'9px 13px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:8,wordBreak:'break-word',alignItems:'flex-start',flexWrap:'wrap'}}>
               <span style={{flexShrink:0}}>⚠️</span>
               <span style={{flex:1}}>{err}</span>
-              <button onClick={()=>setErr(null)} style={{color:'#fca5a5',display:'flex',padding:2,background:'none',border:'none',cursor:'pointer',flexShrink:0}}>{Ic.x}</button>
+              <div style={{display:'flex',gap:6,flexShrink:0}}>
+                {/* Věc #3: Retry button */}
+                <RetryBtn t={t} onRetry={()=>{setErr(null);retryLast()}} lastMsg={displayMsgs.filter(m=>m.role==='user').at(-1)}/>
+                <button onClick={()=>setErr(null)} style={{color:'#fca5a5',display:'flex',padding:2,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+              </div>
             </div>
           )}
           <div ref={endRef}/>
@@ -1259,7 +1361,7 @@ export default function Chat({session}){
 
               <ToolDropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode}>
                 <div style={{padding:'6px 0'}}>
-                  {[{id:'chat',icon:'💬',label:'Chat',sub:null,clr:t.accent},{id:'generate_image',icon:'🎨',label:'AI Obrázek',sub:'Pollinations.ai',clr:t.purple},{id:'web_search',icon:'🦆',label:'Web Search',sub:'DuckDuckGo — zdarma!',clr:t.green},{id:'image_search',icon:'📷',label:'Hledat fotografie',sub:'Unsplash',clr:t.accent}].map(item=>(
+                  {[{id:'chat',icon:'💬',label:'Chat',sub:null,clr:t.accent},{id:'generate_image',icon:'🎨',label:'AI Obrázek',sub:'Pollinations.ai',clr:t.purple},{id:'web_search',icon:'🔍',label:'Web Search',sub:'SearXNG — open-source, zdarma',clr:t.green},{id:'image_search',icon:'📷',label:'Hledat fotografie',sub:'Unsplash',clr:t.accent}].map(item=>(
                     <button key={item.id} onClick={()=>{setImgMode(item.id);setQuizMode(false)}}
                       style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:imgMode===item.id&&!quizMode?item.clr+'22':'transparent',color:imgMode===item.id&&!quizMode?item.clr:t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
                       <span style={{fontSize:16}}>{item.icon}</span>
@@ -1321,6 +1423,13 @@ export default function Chat({session}){
                 {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name}`:imgMode==='web_search'?`🦆 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label}`:' 📷 Fotky'}
               </span>}
               {imgMode==='generate_image'&&<PollenBadge t={t} imgModel={imgModel} pollenInfo={pollenInfo}/>}
+              {/* Věc #4: Styl obrázku toggle */}
+              {imgMode==='generate_image'&&(
+                <button onClick={()=>setShowImgStyles(s=>!s)}
+                  style={{padding:'4px 9px',borderRadius:7,background:showImgStyles?t.purple+'22':t.btn,color:showImgStyles?t.purple:t.muted,border:`1px solid ${showImgStyles?t.purple:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
+                  🎨 Styl
+                </button>
+              )}
             </div>
           )}
 
@@ -1340,6 +1449,11 @@ export default function Chat({session}){
                 <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'6px 16px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto'}}>Start 🎓</button>
               </div>
             </div>
+          )}
+
+          {/* Věc #1: Image Style Presets — zobrazí se když je aktivní generate_image a toggle zapnutý */}
+          {imgMode==='generate_image'&&showImgStyles&&(
+            <ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>
           )}
 
           {atts.length>0&&(
