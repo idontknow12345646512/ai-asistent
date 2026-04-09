@@ -274,7 +274,7 @@ function WeatherCard({data,t}){
       </div>
       {/* 5-day forecast */}
       <div style={{display:'flex',overflowX:'auto',background:t.tag}}>
-        {daily.map((d:{date:string;max:number;min:number;desc:string;rain:number},i:number)=>{
+        {daily.map((d,i)=>{
           const dt=new Date(d.date),isToday=i===0
           return(
             <div key={d.date} style={{flex:'0 0 auto',padding:'10px 14px',textAlign:'center',borderRight:`1px solid ${t.border}`,minWidth:80,background:isToday?t.accent+'22':'transparent'}}>
@@ -1033,7 +1033,7 @@ export default function Chat({session}){
   }
 
   // Počasí
-  const sendWeather=async(city:string)=>{
+  const sendWeather=async(city)=>{
     setShowWeather(false);setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
     const tmpUser={id:uid(),role:'user',content:`🌤️ Počasí: ${city}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
