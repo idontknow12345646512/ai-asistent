@@ -251,6 +251,133 @@ function RetryBtn({t,onRetry,lastMsg}){
   )
 }
 
+// ── NOVÁ FUNKCE 1: Počasí karta ───────────────────────────────────────────────
+function WeatherCard({data,t}){
+  const{city,country,current,daily}=data
+  const dayNames=['Ne','Po','Út','St','Čt','Pá','So']
+  return(
+    <div style={{borderRadius:14,overflow:'hidden',border:`1px solid ${t.border}`}}>
+      {/* Header */}
+      <div style={{padding:'16px 18px',background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}22)`,borderBottom:`1px solid ${t.border}`}}>
+        <div style={{fontSize:11,color:t.muted,marginBottom:4}}>📍 {city}, {country}</div>
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{fontSize:44,fontWeight:700,color:t.txt}}>{current.temp}°</div>
+          <div>
+            <div style={{fontSize:16,color:t.txt}}>{current.desc}</div>
+            <div style={{fontSize:12,color:t.muted}}>Pocitová {current.feels}°C</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:14,marginTop:10}}>
+          <span style={{fontSize:12,color:t.muted}}>💧 {current.humidity}%</span>
+          <span style={{fontSize:12,color:t.muted}}>💨 {current.wind} km/h</span>
+        </div>
+      </div>
+      {/* 5-day forecast */}
+      <div style={{display:'flex',overflowX:'auto',background:t.tag}}>
+        {daily.map((d:{date:string;max:number;min:number;desc:string;rain:number},i:number)=>{
+          const dt=new Date(d.date),isToday=i===0
+          return(
+            <div key={d.date} style={{flex:'0 0 auto',padding:'10px 14px',textAlign:'center',borderRight:`1px solid ${t.border}`,minWidth:80,background:isToday?t.accent+'22':'transparent'}}>
+              <div style={{fontSize:10,color:isToday?t.accent:t.muted,fontWeight:isToday?700:400}}>{isToday?'Dnes':dayNames[dt.getDay()]}</div>
+              <div style={{fontSize:18,margin:'6px 0'}}>{d.desc.split(' ')[0]}</div>
+              <div style={{fontSize:12,color:t.txt,fontWeight:600}}>{d.max}°</div>
+              <div style={{fontSize:11,color:t.muted}}>{d.min}°</div>
+              {d.rain>0&&<div style={{fontSize:10,color:'#60a5fa',marginTop:3}}>🌧 {d.rain}mm</div>}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{fontSize:10,color:t.muted,padding:'5px 10px',textAlign:'right'}}>OpenMeteo • zdarma, bez API klíče</div>
+    </div>
+  )
+}
+
+// ── NOVÁ FUNKCE 2: Šablony zpráv ─────────────────────────────────────────────
+const MSG_TEMPLATES=[
+  {icon:'📧',label:'Formální email',  text:'Napiš formální email na téma: '},
+  {icon:'📝',label:'Shrnutí textu',   text:'Shrň následující text stručně a jasně: '},
+  {icon:'💼',label:'Zpráva z meetingu',text:'Napiš zprávu z meetingu. Témata: '},
+  {icon:'🐛',label:'Bug report',      text:'Napiš bug report: Problém je, že '},
+  {icon:'📣',label:'Post na sociální sítě',text:'Napiš poutavý post na sociální sítě o: '},
+  {icon:'🔍',label:'SEO popis',       text:'Napiš SEO popis produktu: '},
+  {icon:'📖',label:'Vysvětli jednoduše',text:'Vysvětli mi jednoduše (jako bych byl 10 let): '},
+  {icon:'⚡',label:'Bullet pointy',   text:'Přepiš do přehledných bullet pointů: '},
+]
+function TemplatePanel({t,onSelect}){
+  return(
+    <div style={{display:'flex',flexDirection:'column',gap:4,padding:'8px 0',maxHeight:280,overflowY:'auto'}}>
+      {MSG_TEMPLATES.map(tp=>(
+        <button key={tp.label} onClick={()=>onSelect(tp.text)}
+          style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,background:'transparent',color:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',border:'none',transition:'background .12s'}}
+          onMouseOver={e=>e.currentTarget.style.background=t.active}
+          onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+          <span style={{fontSize:18,flexShrink:0}}>{tp.icon}</span>
+          <span style={{color:t.muted,fontSize:12}}>{tp.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── NOVÁ FUNKCE 3: Inline kalkulačka ─────────────────────────────────────────
+function CalcWidget({t,onResult}){
+  const[expr,setExpr]=useState(''),[result,setResult]=useState(''),[err,setErr]=useState(false)
+  const calc=()=>{
+    try{
+      // Bezpecny eval pres Function
+      const cleaned=expr.replace(/[^0-9+\-*/.()%\s]/g,'')
+      if(!cleaned.trim())return
+      // eslint-disable-next-line no-new-func
+      const res=new Function(`"use strict";return(${cleaned})`)()
+      setResult(String(res));setErr(false)
+    }catch{setResult('Chyba');setErr(true)}
+  }
+  return(
+    <div style={{padding:'10px 12px',background:t.tag,borderRadius:10,border:`1px solid ${t.border}`}}>
+      <div style={{fontSize:11,color:t.muted,marginBottom:6}}>🔢 Kalkulačka</div>
+      <div style={{display:'flex',gap:6}}>
+        <input value={expr} onChange={e=>setExpr(e.target.value)} onKeyDown={e=>e.key==='Enter'&&calc()}
+          placeholder="2 + 2 * 10 / 3 ..."
+          style={{flex:1,padding:'7px 10px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'monospace'}}/>
+        <button onClick={calc} style={{padding:'7px 12px',borderRadius:7,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>=</button>
+      </div>
+      {result&&(
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,padding:'8px 12px',borderRadius:7,background:err?'rgba(239,68,68,.1)':t.success,border:`1px solid ${err?'#f87171':t.succ}`}}>
+          <span style={{fontSize:18,fontWeight:700,color:err?'#f87171':t.succ,fontFamily:'monospace'}}>{result}</span>
+          {!err&&<button onClick={()=>{onResult(result);setExpr('');setResult('')}} style={{fontSize:11,color:t.accent,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Vložit do chatu →</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── NOVÁ FUNKCE 4: Přepínač jazyka ───────────────────────────────────────────
+const RESPONSE_LANGS=[
+  {code:'Czech',    flag:'🇨🇿',label:'Česky'},
+  {code:'English',  flag:'🇬🇧',label:'English'},
+  {code:'Slovak',   flag:'🇸🇰',label:'Slovensky'},
+  {code:'German',   flag:'🇩🇪',label:'Deutsch'},
+  {code:'French',   flag:'🇫🇷',label:'Français'},
+  {code:'Spanish',  flag:'🇪🇸',label:'Español'},
+]
+
+// ── NOVÁ FUNKCE 5: Počasí toolbar tlačítko helper ────────────────────────────
+function WeatherInput({t,onSearch}){
+  const[city,setCity]=useState('')
+  return(
+    <div style={{display:'flex',gap:6,marginBottom:6,animation:'dropIn .2s ease'}}>
+      <input value={city} onChange={e=>setCity(e.target.value)} onKeyDown={e=>e.key==='Enter'&&city.trim()&&onSearch(city)}
+        placeholder="Zadej město… (Praha, Brno…)"
+        style={{flex:1,padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.accent}`,borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit'}}
+        autoFocus/>
+      <button onClick={()=>city.trim()&&onSearch(city)}
+        style={{padding:'7px 14px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
+        🌤️
+      </button>
+    </div>
+  )
+}
+
 function SparkleBtn({t,selectedText,onGenerate}){
   if(!selectedText)return null
   return(
@@ -290,10 +417,10 @@ function ImgGrid({images,query,t}){
 }
 
 function WebSearchResults({data,t}){
-  const{results=[],summary,query,searchType='web'}=data
+  const{results=[],summary,query,searchType='web',provider=''}=data
   if(!results.length)return(
     <div style={{padding:'12px',textAlign:'center',color:t.muted,fontSize:13}}>
-      Žádné výsledky pro „{query}" na SearXNG.
+      Žádné výsledky pro „{query}". Zkus jiný dotaz.
     </div>
   )
   return(
@@ -301,7 +428,7 @@ function WebSearchResults({data,t}){
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
         <span style={{fontSize:14}}>{searchType==='video'?'🎬':searchType==='image'?'🖼️':'🌐'}</span>
         <strong style={{color:t.txt,fontSize:13}}>„{query}"</strong>
-        <span style={{fontSize:11,color:t.muted,background:t.btn,padding:'2px 7px',borderRadius:4,border:`1px solid ${t.border}`}}>SearXNG</span>
+        <span style={{fontSize:11,color:t.muted,background:t.btn,padding:'2px 7px',borderRadius:4,border:`1px solid ${t.border}`}}>{provider||'Web Search'}</span>
         <span style={{fontSize:11,color:t.muted}}>{results.length} výsledků</span>
       </div>
       {summary&&searchType==='web'&&(
@@ -363,8 +490,8 @@ function WebSearchResults({data,t}){
         </div>
       )}
       <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:4}}>
-        🔍 Powered by SearXNG &nbsp;
-        <a href={`https://searx.be/search?q=${encodeURIComponent(query)}`} target="_blank" rel="noopener noreferrer" style={{color:t.muted}}>Otevřít v SearXNG</a>
+        🔍 Powered by {provider||'Web Search'} &nbsp;
+        <a href={`https://duckduckgo.com/?q=${encodeURIComponent(query)}`} target="_blank" rel="noopener noreferrer" style={{color:t.muted}}>Hledat online</a>
       </div>
     </div>
   )
@@ -762,6 +889,12 @@ export default function Chat({session}){
   const[lastUserMsg,setLastUserMsg]=useState(null)
   // Nová věc #1: Smart suggestions — poslední AI zpráva pro suggestions
   const[lastAiMsg,setLastAiMsg]   =useState('')
+  // 5 nových funkcí
+  const[showWeather,setShowWeather]   =useState(false)   // počasí input
+  const[showTemplates,setShowTemplates]=useState(false)  // šablony
+  const[showCalc,setShowCalc]         =useState(false)   // kalkulačka
+  const[responseLang,setResponseLang] =useState('Czech') // jazyk odpovědí
+  const[showLangPicker,setShowLangPicker]=useState(false)// přepínač jazyka
 
   const endRef=useRef(null),fileRef=useRef(null),taRef=useRef(null),searchRef=useRef(null)
   const t=THEMES[themeName]||THEMES.dark
@@ -899,6 +1032,25 @@ export default function Chat({session}){
     if(lastUser&&lastUser.content){setInput(lastUser.content);setErr(null)}
   }
 
+  // Počasí
+  const sendWeather=async(city:string)=>{
+    setShowWeather(false);setLoading(true);setErr(null)
+    const cid=activeConv?.id,isLocal=activeConv?.local
+    const tmpUser={id:uid(),role:'user',content:`🌤️ Počasí: ${city}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
+    if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
+    else setMsgs(p=>[...p,tmpUser])
+    try{
+      const tk=await getFreshToken()||ANON
+      const result=await callEdge('weather',{location:city},tk)
+      const nid=uid()
+      const aMsg={id:nid,role:'assistant',type:'weather',content:`🌤️ Počasí: ${result.weather?.city}`,_weatherData:result.weather,created_at:new Date().toISOString()}
+      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      else{await saveMsg(cid,'user',tmpUser.content,'text',null);await saveMsg(cid,'assistant',aMsg.content,'text',null);setMsgs(p=>[...p.filter(m=>!m._tmp),tmpUser,aMsg])}
+      addNewAnim(nid)
+    }catch(e){setErr('Počasí: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp))}
+    finally{setLoading(false)}
+  }
+
   const visualizeSelection=async txt=>{
     setSelTxt('');setSelPos(null)
     if(!isLoggedIn){setErr('Pro generování obrázků se přihlaste.');return}
@@ -998,7 +1150,7 @@ export default function Chat({session}){
     try{
       const history=[...prev,tmpUser].map(m=>({role:m.role,content:m.id===tmpUser.id&&api.length>0?api:[{type:'text',text:m.content}]}))
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
-      const payload={messages:history,system:sysPmt,thinking,memory}
+      const payload={messages:history,system:sysPmt,thinking,memory,language:responseLang}
       if(aiModel==='gemma-3-12b')payload.preferredModel='gemma-3-12b'
       else if(aiModel==='gemini-auto')payload.preferredModel=null
       const result=await callEdge(apiMode,payload,tk)
@@ -1279,7 +1431,13 @@ export default function Chat({session}){
                       )}
                     </div>
                   )}
-                  {msg.type==='web_search'?(
+                  {msg.type==='weather'?(
+                    <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+                      {(m._weatherData||msg._weatherData)?<WeatherCard data={m._weatherData||msg._weatherData} t={t}/>
+                        :<div style={{color:t.muted,fontSize:13}}>Data počasí nejsou k dispozici.</div>}
+                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
+                    </div>
+                  ):msg.type==='web_search'?(
                     <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <WebSearchResults data={m._webData||{results:[],query:'',searchType:'web'}} t={t}/>
                       <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
@@ -1332,7 +1490,7 @@ export default function Chat({session}){
               <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
               <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:80}}>
                 {imgMode==='generate_image'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span></div>)
-                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>🔍 Prohledávám internet (SearXNG)…</span></div>)
+                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>🔍 Prohledávám internet…</span></div>)
                 :imgMode==='image_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.green}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span></div>)
                 :thinking?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/><span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span></div>)
                 :(<div className="dot"><span/><span/><span/></div>)}
@@ -1430,6 +1588,35 @@ export default function Chat({session}){
                   🎨 Styl
                 </button>
               )}
+              {/* NOVÉ 5 funkcí — vždy viditelné */}
+              <button onClick={()=>{setShowWeather(s=>!s);setShowTemplates(false);setShowCalc(false)}}
+                style={{padding:'4px 9px',borderRadius:7,background:showWeather?t.accent+'22':t.btn,color:showWeather?t.accent:t.muted,border:`1px solid ${showWeather?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+                title="Počasí">🌤️</button>
+              <button onClick={()=>{setShowTemplates(s=>!s);setShowWeather(false);setShowCalc(false)}}
+                style={{padding:'4px 9px',borderRadius:7,background:showTemplates?t.accent+'22':t.btn,color:showTemplates?t.accent:t.muted,border:`1px solid ${showTemplates?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+                title="Šablony">📝</button>
+              <button onClick={()=>{setShowCalc(s=>!s);setShowWeather(false);setShowTemplates(false)}}
+                style={{padding:'4px 9px',borderRadius:7,background:showCalc?t.accent+'22':t.btn,color:showCalc?t.accent:t.muted,border:`1px solid ${showCalc?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+                title="Kalkulačka">🔢</button>
+              {/* Jazyk odpovědí */}
+              <div style={{position:'relative'}}>
+                <button onClick={()=>setShowLangPicker(s=>!s)}
+                  style={{padding:'4px 9px',borderRadius:7,background:showLangPicker?t.accent+'22':t.btn,color:showLangPicker?t.accent:t.muted,border:`1px solid ${showLangPicker?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',display:'flex',alignItems:'center',gap:3}}
+                  title="Jazyk odpovědí">
+                  {RESPONSE_LANGS.find(l=>l.code===responseLang)?.flag||'🌍'} {Ic.chevDn}
+                </button>
+                {showLangPicker&&(
+                  <div style={{position:'absolute',bottom:'calc(100% + 6px)',left:0,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,padding:4,zIndex:40,boxShadow:`0 8px 24px rgba(0,0,0,.4)`,animation:'dropIn .2s ease',minWidth:120}}>
+                    {RESPONSE_LANGS.map(l=>(
+                      <button key={l.code} onClick={()=>{setResponseLang(l.code);setShowLangPicker(false)}}
+                        style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'7px 10px',borderRadius:7,background:responseLang===l.code?t.accent+'22':'transparent',color:responseLang===l.code?t.accent:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
+                        <span>{l.flag}</span><span>{l.label}</span>
+                        {responseLang===l.code&&<span style={{marginLeft:'auto',color:t.accent}}>{Ic.check}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1454,6 +1641,26 @@ export default function Chat({session}){
           {/* Věc #1: Image Style Presets — zobrazí se když je aktivní generate_image a toggle zapnutý */}
           {imgMode==='generate_image'&&showImgStyles&&(
             <ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>
+          )}
+
+          {/* NOVÁ FUNKCE 1: Počasí input */}
+          {showWeather&&(
+            <WeatherInput t={t} onSearch={city=>{setShowWeather(false);sendWeather(city)}}/>
+          )}
+
+          {/* NOVÁ FUNKCE 2: Šablony */}
+          {showTemplates&&(
+            <div style={{marginBottom:8,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,overflow:'hidden',animation:'dropIn .2s ease'}}>
+              <div style={{padding:'7px 12px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.muted,fontWeight:600}}>📝 Šablony zpráv</div>
+              <TemplatePanel t={t} onSelect={txt=>{setInput(txt);setShowTemplates(false);taRef.current?.focus()}}/>
+            </div>
+          )}
+
+          {/* NOVÁ FUNKCE 3: Kalkulačka */}
+          {showCalc&&(
+            <div style={{marginBottom:8,animation:'dropIn .2s ease'}}>
+              <CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>
+            </div>
           )}
 
           {atts.length>0&&(
