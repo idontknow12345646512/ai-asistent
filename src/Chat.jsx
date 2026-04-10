@@ -7,7 +7,7 @@ import {
   CONV_COLORS, IMG_MODELS, AI_MODELS, WEB_SEARCH_TYPES,
   PERSONAS, QUIZ_COUNTS, QUIZ_DIFFS, MEM_CATEGORIES,
   THEMES, THEME_LIST, Ic, LumiAvatar, POLLEN_LIMIT, POLLEN_WINDOW,
-  uid, fmtTime, fmtRelTime, fmtDate, callEdge, detectAutoMode, mkLocal, renderMD,
+  uid, fmtTime, fmtRelTime, fmtDate, callEdge, detectAutoMode, detectIntent, mkLocal, renderMD,
   getPollenCache, setPollenCache,
 } from './constants.jsx'
 
@@ -252,6 +252,71 @@ function RetryBtn({t,onRetry,lastMsg}){
 }
 
 // ── NOVÁ FUNKCE 1: Počasí karta ───────────────────────────────────────────────
+// ── UNIKÁTNÍ FUNKCE: Prompt Záložky ──────────────────────────────────────────
+// Ukládáš si vlastní oblíbené prompty — kliknutím je vložíš do inputu.
+// Ukládá se do localStorage, přetrvává přes reloady.
+const BOOKMARKS_KEY='lumi_prompt_bookmarks'
+function loadBookmarks(){try{return JSON.parse(localStorage.getItem(BOOKMARKS_KEY)||'[]')}catch{return[]}}
+function saveBookmarks(list){try{localStorage.setItem(BOOKMARKS_KEY,JSON.stringify(list))}catch{}}
+
+function PromptBookmarks({t,input,onSelect}){
+  const[marks,setMarks]=useState(()=>loadBookmarks())
+  const[editMode,setEditMode]=useState(false)
+  const[newLabel,setNewLabel]=useState('')
+
+  const add=()=>{
+    if(!input.trim())return
+    const label=newLabel.trim()||input.trim().slice(0,32)+(input.length>32?'…':'')
+    const next=[{id:uid(),label,text:input.trim(),createdAt:Date.now()},...marks].slice(0,20)
+    setMarks(next);saveBookmarks(next);setNewLabel('')
+  }
+  const del=(id)=>{const next=marks.filter(m=>m.id!==id);setMarks(next);saveBookmarks(next)}
+
+  return(
+    <div style={{marginBottom:8,animation:'dropIn .2s ease'}}>
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+        <span style={{fontSize:11,color:t.muted,fontWeight:600}}>🔖 Záložky</span>
+        <button onClick={()=>setEditMode(e=>!e)} style={{fontSize:10,color:t.muted,background:'none',border:'none',cursor:'pointer',padding:'2px 6px',borderRadius:4,background:editMode?t.active:t.btn,border:`1px solid ${t.border}`}}>
+          {editMode?'Hotovo':'Spravovat'}
+        </button>
+        {input.trim()&&(
+          <div style={{display:'flex',gap:4,flex:1}}>
+            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Název záložky…"
+              style={{flex:1,fontSize:11,padding:'3px 8px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:6,outline:'none',fontFamily:'inherit'}}/>
+            <button onClick={add} style={{padding:'3px 9px',borderRadius:6,background:t.accent,color:'#fff',fontSize:11,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+              + Uložit prompt
+            </button>
+          </div>
+        )}
+      </div>
+      {marks.length===0&&(
+        <div style={{fontSize:11,color:t.muted,padding:'8px 0',textAlign:'center'}}>
+          Žádné záložky. Napiš prompt a klikni „+ Uložit prompt".
+        </div>
+      )}
+      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+        {marks.map(m=>(
+          <div key={m.id} style={{display:'flex',alignItems:'center',gap:0,borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,overflow:'hidden',transition:'border-color .15s'}}
+            onMouseOver={e=>e.currentTarget.style.borderColor=t.accent}
+            onMouseOut={e=>e.currentTarget.style.borderColor=t.border}>
+            <button onClick={()=>onSelect(m.text)}
+              style={{padding:'4px 10px',background:'transparent',color:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+              title={m.text}>
+              🔖 {m.label}
+            </button>
+            {editMode&&(
+              <button onClick={()=>del(m.id)}
+                style={{padding:'4px 7px',background:'rgba(239,68,68,.15)',color:'#f87171',fontSize:11,border:'none',borderLeft:`1px solid ${t.border}`,cursor:'pointer'}}>
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function WeatherCard({data,t}){
   const{city,country,current,daily}=data
   const dayNames=['Ne','Po','Út','St','Čt','Pá','So']
@@ -895,6 +960,7 @@ export default function Chat({session}){
   const[showCalc,setShowCalc]         =useState(false)   // kalkulačka
   const[responseLang,setResponseLang] =useState('Czech') // jazyk odpovědí
   const[showLangPicker,setShowLangPicker]=useState(false)// přepínač jazyka
+  const[showBookmarks,setShowBookmarks]=useState(false)  // Záložky promptů
 
   const endRef=useRef(null),fileRef=useRef(null),taRef=useRef(null),searchRef=useRef(null)
   const t=THEMES[themeName]||THEMES.dark
@@ -1135,6 +1201,32 @@ export default function Chat({session}){
     if(imgMode==='web_search'){sendWebSearch();return}
     if((!input.trim()&&!atts.length)||loading||!activeConv)return
     const cid=activeConv.id,userText=input.trim()||atts.map(a=>a.name).join(', '),isLocal=activeConv.local
+
+    // ── Smart Intent Detection ─────────────────────────────────────────────
+    if(isLoggedIn&&imgMode==='chat'){
+      const intent=detectIntent(userText)
+      // Obrázek
+      if(intent==='generate_image'){setImgMode('generate_image');sendImg(userText);return}
+      // Web search
+      if(intent==='web_search'){setImgMode('web_search');setInput(userText);setTimeout(()=>sendWebSearch(),30);return}
+      // Foto
+      if(intent==='image_search'){setImgMode('image_search');setTimeout(()=>send(),30);return}
+      // Počasí — extrahuj město z textu
+      if(intent==='weather'){
+        const cityMatch=userText.match(/počasí\s+(?:v\s+)?([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+(?:\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+)?)|weather\s+in\s+([A-Z][a-zA-Z]+)/i)
+        const city=cityMatch?.[1]||cityMatch?.[2]||'Praha'
+        setInput('');sendWeather(city);return
+      }
+      // Kvíz — extrahuj téma
+      if(intent==='quiz'){
+        const topicMatch=userText.match(/kvíz\s+(?:na téma\s+|o\s+|ze?\s+)?(.+?)(?:\s*$)/i)||userText.match(/quiz\s+(?:about\s+)?(.+)/i)
+        const topic=topicMatch?.[1]?.trim()||userText.replace(/kvíz|quiz/gi,'').trim()||'Obecné znalosti'
+        setInput('');setQuizMode(true);setQuizTopic(topic.slice(0,60));return
+      }
+      // Mood Board
+      if(intent==='moodboard'){setImgMode('generate_image');sendImg(userText);return}
+    }
+
     const apiMode=isLoggedIn?detectAutoMode(userText,imgMode):'chat'
     if(apiMode==='generate_image'){setImgMode('generate_image');sendImg(userText);return}
     if(apiMode==='web_search'){setImgMode('web_search');setTimeout(()=>sendWebSearch(),50);return}
@@ -1598,6 +1690,9 @@ export default function Chat({session}){
               <button onClick={()=>{setShowCalc(s=>!s);setShowWeather(false);setShowTemplates(false)}}
                 style={{padding:'4px 9px',borderRadius:7,background:showCalc?t.accent+'22':t.btn,color:showCalc?t.accent:t.muted,border:`1px solid ${showCalc?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
                 title="Kalkulačka">🔢</button>
+              <button onClick={()=>{setShowBookmarks(s=>!s);setShowWeather(false);setShowTemplates(false);setShowCalc(false)}}
+                style={{padding:'4px 9px',borderRadius:7,background:showBookmarks?t.accent+'22':t.btn,color:showBookmarks?t.accent:t.muted,border:`1px solid ${showBookmarks?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
+                title="Záložky promptů">🔖</button>
               {/* Jazyk odpovědí */}
               <div style={{position:'relative'}}>
                 <button onClick={()=>setShowLangPicker(s=>!s)}
@@ -1661,6 +1756,11 @@ export default function Chat({session}){
             <div style={{marginBottom:8,animation:'dropIn .2s ease'}}>
               <CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>
             </div>
+          )}
+
+          {/* Unikátní funkce: Záložky promptů */}
+          {showBookmarks&&(
+            <PromptBookmarks t={t} input={input} onSelect={txt=>{setInput(txt);setShowBookmarks(false);taRef.current?.focus()}}/>
           )}
 
           {atts.length>0&&(

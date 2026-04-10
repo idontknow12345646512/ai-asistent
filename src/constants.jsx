@@ -87,13 +87,65 @@ export async function callEdge(mode,payload,token){
   if(!res.ok){const t=await res.text();let p;try{p=JSON.parse(t)}catch{p=null};throw new Error(p?.error||`HTTP ${res.status}`)}
   const d=await res.json();if(d.error)throw new Error(d.error);return d
 }
+// ── Smart Intent Detection ────────────────────────────────────────────────────
+// Detekuje záměr z textu zprávy včetně negací ("nechci", "negeneruj"...)
+// Vrátí: 'chat' | 'generate_image' | 'image_search' | 'web_search' | 'quiz' | 'weather' | 'moodboard'
+export function detectIntent(text){
+  const t=text.toLowerCase().trim()
+
+  // ── Negace — explicitní odmítnutí ────────────────────────────────────────
+  const negations=['nechci','nechce','negeneruj','negenerovat','nevytvářej','nekresli',
+    'nezobrazuj','nevyhledávej','nehledej','nespouštěj','nepotřebuji obrázek',
+    'nepotřebuji kvíz','bez obrázku','bez kvízu','dont generate','do not generate',
+    "don't generate",'no image','no quiz']
+  if(negations.some(n=>t.includes(n)))return'chat'
+
+  // ── Mood Board ────────────────────────────────────────────────────────────
+  const moodboardTriggers=['mood board','moodboard','nálada','vytvoř náladu',
+    'inspirační tabule','nástěnka','vibe board','aesthetic']
+  if(moodboardTriggers.some(x=>t.includes(x)))return'moodboard'
+
+  // ── Počasí ────────────────────────────────────────────────────────────────
+  const weatherTriggers=['jaké je počasí','jak je venku','počasí v','teplota v',
+    "what's the weather",'weather in','how hot','how cold','bude pršet',
+    'bude sněžit','předpověď počasí','meteorologická','teplota venku']
+  if(weatherTriggers.some(x=>t.includes(x)))return'weather'
+
+  // ── Kvíz ─────────────────────────────────────────────────────────────────
+  const quizTriggers=['udělej kvíz','vytvoř kvíz','chci kvíz','spusť kvíz',
+    'otestuj mě','testuj mě','make a quiz','quiz me','quiz about',
+    'kvízové otázky','otázky na téma','vyzkoušej mě']
+  if(quizTriggers.some(x=>t.includes(x)))return'quiz'
+
+  // ── Web Search ────────────────────────────────────────────────────────────
+  const searchTriggers=['hledej na webu','vyhledej na webu','najdi na internetu',
+    'najdi informace o','co se děje','co je nového','search the web','find online',
+    'google','vyhledej','co víš o','co je to','kdo je','kdy se stalo','kde se nachází',
+    'latest news','nejnovější zprávy','aktuální informace']
+  if(searchTriggers.some(x=>t.includes(x)))return'web_search'
+
+  // ── Generování obrázku ────────────────────────────────────────────────────
+  const imgTriggers=['vygeneruj obrázek','vygeneruj mi obrázek','nakresli','vytvoř obrázek',
+    'generate image','generate a picture','draw me','create image','create picture',
+    'chci obrázek','chci vidět obrázek','ukaž mi obrázek','vygeneruj','vykresli',
+    'namaluj','illustruj','zobraz mi','ai obrázek']
+  if(imgTriggers.some(x=>t.includes(x)))return'generate_image'
+
+  // ── Hledání fotografií ────────────────────────────────────────────────────
+  const photoTriggers=['najdi fotku','najdi fotografii','najdi obrázek','vyhledej fotku',
+    'find a photo','find an image','show me a photo','fotografie od','foto ']
+  if(photoTriggers.some(x=>t.includes(x)))return'image_search'
+
+  return'chat'
+}
+
+// Zpětná kompatibilita — zachová starý detectAutoMode
 export function detectAutoMode(text,imgMode){
   if(imgMode!=='chat')return imgMode
-  const t=text.toLowerCase()
-  if(['vygeneruj','nakresli','vytvoř obrázek','generate image','draw '].some(x=>t.includes(x)))return'generate_image'
-  if(['najdi obrázk','vyhledej fotk','ukaž fotky','fotky ','fotografie ','find image','photo of'].some(x=>t.includes(x)))return'image_search'
-  if(['hledej na webu','vyhledej na webu','search the web','find online','co je nového na webu'].some(x=>t.includes(x)))return'web_search'
-  return'chat'
+  const intent=detectIntent(text)
+  // Přeložíme quiz/weather/moodboard na chat (zpracuje se v send funkci)
+  if(['quiz','weather','moodboard'].includes(intent))return'chat'
+  return intent
 }
 export const mkLocal=()=>({id:uid(),title:'Nová konverzace',messages:[],createdAt:Date.now(),local:true})
 
