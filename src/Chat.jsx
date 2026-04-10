@@ -1,14 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { supabase } from './supabase'
 import AuthModal from './AuthModal'
 import LiveModal from './LiveModal'
 import {
-  ANON, SYS_DEFAULT,
-  CONV_COLORS, IMG_MODELS, AI_MODELS, WEB_SEARCH_TYPES,
-  PERSONAS, QUIZ_COUNTS, QUIZ_DIFFS, MEM_CATEGORIES,
-  THEMES, THEME_LIST, Ic, LumiAvatar, POLLEN_LIMIT, POLLEN_WINDOW,
-  uid, fmtTime, fmtRelTime, fmtDate, callEdge, detectAutoMode, detectIntent, mkLocal, renderMD,
-  getPollenCache, setPollenCache,
+  ANON, SYS_DEFAULT, CONV_COLORS, IMG_MODELS, AI_MODELS, LIVE_MODELS,
+  WEB_SEARCH_TYPES, PERSONAS, QUIZ_COUNTS, QUIZ_DIFFS, MEM_CATEGORIES,
+  THEMES, THEME_LIST, Ic, LumiAvatar, POLLEN_LIMIT,
+  uid, fmtTime, fmtRelTime, fmtDate, callEdge, detectIntent, detectAutoMode,
+  detectMemoryInfo, mkLocal, renderMD, getNowCtx, getPollenCache, setPollenCache,
 } from './constants.jsx'
 
 async function getFreshToken(){
@@ -18,586 +17,204 @@ async function getFreshToken(){
   return d2?.session?.access_token??null
 }
 
-function TypingText({text,isDark,useMarkdown,onDone}){
+// ── TypingText ────────────────────────────────────────────────────────────────
+const TypingText=memo(function TypingText({text,isDark,useMarkdown,onDone}){
   const[shown,setShown]=useState(''),[fin,setFin]=useState(false)
   useEffect(()=>{
     setShown('');setFin(false)
     if(!text){setFin(true);onDone?.();return}
-    let i=0;const sp=text.length>600?4:text.length>200?6:8
-    const id=setInterval(()=>{i+=sp;if(i>=text.length){setShown(text);setFin(true);clearInterval(id);onDone?.()}else setShown(text.slice(0,i))},14)
+    let i=0;const sp=text.length>800?6:text.length>300?8:10
+    const id=setInterval(()=>{i+=sp;if(i>=text.length){setShown(text);setFin(true);clearInterval(id);onDone?.()}else setShown(text.slice(0,i))},12)
     return()=>clearInterval(id)
   },[text]) // eslint-disable-line
   if(fin&&useMarkdown)return<div style={{fontSize:14,lineHeight:1.7,wordBreak:'break-word'}} dangerouslySetInnerHTML={{__html:renderMD(text,isDark)}}/>
   return<div style={{fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{shown}{!fin&&<span style={{animation:'blink 1s infinite',display:'inline-block',width:2,height:14,background:'currentColor',marginLeft:1,verticalAlign:'text-bottom'}}/>}</div>
-}
+})
 
-function CookieBanner({t,onAccept}){
-  return(
-    <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:80,padding:'14px 20px',background:t.isDark?'rgba(13,16,25,.97)':'rgba(255,255,255,.97)',backdropFilter:'blur(16px)',borderTop:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:14,flexWrap:'wrap',boxShadow:'0 -4px 32px rgba(0,0,0,.25)',animation:'slideUpBanner .4s ease'}}>
-      <div style={{display:'flex',alignItems:'center',gap:10,flex:1,minWidth:200}}>
-        <span style={{fontSize:20}}>🍪</span>
-        <div><div style={{fontSize:13,fontWeight:600,color:t.txt}}>Lumi používá cookies</div>
-          <div style={{fontSize:11,color:t.muted}}>Ukládáme pollen limit, téma a nastavení. Žádné sledovací cookies třetích stran.</div></div>
-      </div>
-      <button onClick={onAccept} style={{padding:'9px 20px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'transform .15s'}} onMouseOver={e=>e.currentTarget.style.transform='scale(1.03)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>Rozumím</button>
-    </div>
-  )
-}
-
-function AuroraBeam({t}){
+// ── AuroraBeam ────────────────────────────────────────────────────────────────
+const AuroraBeam=memo(function AuroraBeam({t}){
   return(
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:0}}>
       <div style={{position:'absolute',top:'-15%',left:'50%',transform:'translateX(-50%)',width:'75%',height:'65%',background:`radial-gradient(ellipse at center,${t.gradA}20 0%,${t.gradB}12 40%,transparent 70%)`,animation:'auroraFloat 9s ease-in-out infinite',borderRadius:'50%',filter:'blur(48px)'}}/>
       <div style={{position:'absolute',top:'5%',left:'10%',width:'35%',height:'45%',background:`radial-gradient(ellipse at center,${t.gradB}12 0%,transparent 70%)`,animation:'auroraFloat2 13s ease-in-out infinite',borderRadius:'50%',filter:'blur(56px)'}}/>
-      <div style={{position:'absolute',top:'15%',right:'8%',width:'28%',height:'35%',background:`radial-gradient(ellipse at center,${t.gradA}10 0%,transparent 70%)`,animation:'auroraFloat2 11s ease-in-out infinite reverse',borderRadius:'50%',filter:'blur(44px)'}}/>
-      {[0,1,2,3,4].map(i=>(
-        <div key={i} style={{position:'absolute',width:2,height:2,borderRadius:'50%',background:t.gradA,opacity:.4,top:`${15+i*13}%`,left:`${18+i*13}%`,animation:`auroraFloat2 ${6+i*1.5}s ease-in-out infinite`,animationDelay:`${i*0.9}s`}}/>
-      ))}
     </div>
   )
-}
+})
 
-function PollenBadge({t,imgModel,pollenInfo}){
+// ── PollenBadge ───────────────────────────────────────────────────────────────
+const PollenBadge=memo(function PollenBadge({t,imgModel,pollenInfo}){
   const cost=IMG_MODELS.find(m=>m.id===imgModel)?.cost||1
   const rem=pollenInfo?.remaining??POLLEN_LIMIT
   const pct=Math.max(0,Math.min(100,Math.round((rem/POLLEN_LIMIT)*100)))
   const clr=rem<=0?t.danger:rem<10?'#f59e0b':t.green
-  const resetAt=pollenInfo?.resetAt
   const[countdown,setCountdown]=useState('')
   useEffect(()=>{
+    const resetAt=pollenInfo?.resetAt
     if(!resetAt||rem>0){setCountdown('');return}
-    const tick=()=>{
-      const diff=new Date(resetAt).getTime()-Date.now()
-      if(diff<=0){setCountdown('reset!');return}
-      const m=Math.floor(diff/60000),s=Math.floor((diff%60000)/1000)
-      setCountdown(`${m}:${String(s).padStart(2,'0')}`)
-    }
+    const tick=()=>{const diff=new Date(resetAt).getTime()-Date.now();if(diff<=0){setCountdown('reset!');return};const m=Math.floor(diff/60000),s=Math.floor((diff%60000)/1000);setCountdown(`${m}:${String(s).padStart(2,'0')}`)}
     tick();const id=setInterval(tick,1000);return()=>clearInterval(id)
-  },[resetAt,rem])
+  },[pollenInfo?.resetAt,rem])
   return(
-    <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 9px',borderRadius:7,background:t.tag,border:`1px solid ${t.border}`,fontSize:11,flexShrink:0}}>
-      <span style={{fontSize:12}}>🌸</span>
-      <div>
-        <div style={{display:'flex',alignItems:'center',gap:4}}>
-          <span style={{color:clr,fontWeight:700}}>{rem}p</span>
-          <span style={{color:t.muted}}>/{POLLEN_LIMIT}</span>
-          {countdown&&<span style={{fontSize:9,color:t.danger,fontWeight:700,marginLeft:2}}>⏱ {countdown}</span>}
-        </div>
-        <div style={{width:44,height:3,background:t.btn,borderRadius:2,overflow:'hidden',marginTop:2}}>
-          <div style={{width:`${pct}%`,height:'100%',background:clr,borderRadius:2,transition:'width .4s ease'}}/>
-        </div>
+    <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 8px',borderRadius:6,background:t.tag,border:`1px solid ${t.border}`,fontSize:11,flexShrink:0}}>
+      <span>🌸</span>
+      <span style={{color:clr,fontWeight:700}}>{rem}/{POLLEN_LIMIT}</span>
+      {countdown&&<span style={{fontSize:9,color:t.danger,fontWeight:700}}>⏱{countdown}</span>}
+      <div style={{width:30,height:3,background:t.btn,borderRadius:2,overflow:'hidden'}}>
+        <div style={{width:`${pct}%`,height:'100%',background:clr,borderRadius:2,transition:'width .4s'}}/>
       </div>
-      {rem<cost&&<span style={{fontSize:9,color:t.danger,fontWeight:700}}>⚠️{cost}p</span>}
+      {rem<cost&&<span style={{fontSize:9,color:t.danger}}>⚠️</span>}
     </div>
   )
-}
+})
 
-function ShortcutsModal({t,onClose}){
-  const list=[['Ctrl+K','Nová konverzace'],['Ctrl+/','Zkratky'],['Ctrl+E','Export chatu'],['Ctrl+B','Tučný text'],['Enter','Odeslat'],['Shift+Enter','Nový řádek'],['Escape','Zavřít']]
-  return(
-    <>
-      <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:70,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:71,width:'min(380px,94vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,padding:24,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .25s cubic-bezier(.34,1.56,.64,1)'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
-          <h3 style={{fontSize:15,fontWeight:600,color:t.txt}}>⌨️ Klávesové zkratky</h3>
-          <button onClick={onClose} style={{color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-        </div>
-        {list.map(([k,d])=>(
-          <div key={k} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${t.border}`}}>
-            <span style={{fontSize:13,color:t.muted}}>{d}</span>
-            <kbd style={{padding:'3px 8px',borderRadius:5,background:t.btn,border:`1px solid ${t.border}`,fontSize:11,color:t.txt,fontFamily:'monospace',fontWeight:600}}>{k}</kbd>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
-
-function MdToolbar({t,taRef,input,setInput}){
-  const apply=(pre,suf='')=>{
-    const ta=taRef.current;if(!ta)return
-    const s=ta.selectionStart,e=ta.selectionEnd
-    const sel=input.slice(s,e)||'text'
-    setInput(input.slice(0,s)+pre+sel+suf+input.slice(e))
-    setTimeout(()=>{ta.focus();ta.setSelectionRange(s+pre.length,s+pre.length+sel.length)},0)
-  }
-  const btns=[{l:'B',ti:'Tučný (Ctrl+B)',p:'**',s:'**',st:{fontWeight:700}},{l:'I',ti:'Kurzíva',p:'*',s:'*',st:{fontStyle:'italic'}},{l:'`',ti:'Kód',p:'`',s:'`',st:{fontFamily:'monospace'}},{l:'>',ti:'Citace',p:'> ',s:'',st:{}},{l:'—',ti:'Čára',p:'\n---\n',s:'',st:{}}]
-  return(
-    <div style={{display:'flex',gap:3,marginBottom:6}}>
-      {btns.map(b=>(
-        <button key={b.l} onClick={()=>apply(b.p,b.s)} title={b.ti}
-          style={{padding:'3px 8px',borderRadius:5,background:t.btn,color:t.muted,fontSize:12,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',...b.st}}
-          onMouseOver={e=>{e.currentTarget.style.background=t.active;e.currentTarget.style.color=t.txt}}
-          onMouseOut={e=>{e.currentTarget.style.background=t.btn;e.currentTarget.style.color=t.muted}}>
-          {b.l}
-        </button>
-      ))}
-      <span style={{fontSize:10,color:t.muted,alignSelf:'center',marginLeft:3}}>Md</span>
-    </div>
-  )
-}
-
-function QuickReactions({msgId,reactions,onReact,t}){
-  const[open,setOpen]=useState(false)
-  const emojis=['👍','❤️','😂','🔥','👏','🤔','😮','✅']
-  const myReacts=reactions[msgId]||[]
-  return(
-    <div style={{display:'inline-flex',alignItems:'center',gap:3,flexWrap:'wrap',marginTop:3}}>
-      {myReacts.map(r=>(
-        <button key={r.emoji} onClick={()=>onReact(msgId,r.emoji)}
-          style={{display:'flex',alignItems:'center',gap:2,padding:'2px 6px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,cursor:'pointer',fontFamily:'inherit',transition:'transform .15s'}}
-          onMouseOver={e=>e.currentTarget.style.transform='scale(1.12)'}
-          onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
-          {r.emoji}<span style={{fontSize:10,color:t.muted}}>{r.count}</span>
-        </button>
-      ))}
-      <div style={{position:'relative'}}>
-        <button onClick={()=>setOpen(o=>!o)} style={{padding:'2px 6px',borderRadius:10,background:'transparent',border:`1px dashed ${t.border}`,fontSize:11,color:t.muted,cursor:'pointer'}}
-          onMouseOver={e=>e.currentTarget.style.borderColor=t.accent}
-          onMouseOut={e=>e.currentTarget.style.borderColor=t.border}>+😊</button>
-        {open&&(
-          <div style={{position:'absolute',bottom:'calc(100% + 4px)',left:0,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,padding:6,display:'flex',gap:4,flexWrap:'wrap',width:160,zIndex:20,boxShadow:'0 8px 24px rgba(0,0,0,.3)',animation:'dropIn .2s ease'}}>
-            {emojis.map(e=>(
-              <button key={e} onClick={()=>{onReact(msgId,e);setOpen(false)}}
-                style={{fontSize:16,padding:4,borderRadius:6,background:'transparent',border:'none',cursor:'pointer',transition:'transform .1s'}}
-                onMouseOver={ev=>ev.currentTarget.style.transform='scale(1.25)'}
-                onMouseOut={ev=>ev.currentTarget.style.transform='scale(1)'}>
-                {e}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── Věc #1: Image Style Presets ───────────────────────────────────────────────
-function ImageStylePresets({t,onSelect}){
-  const presets=[
-    {label:'📸 Realistic',val:'photorealistic, 8k, detailed, sharp'},
-    {label:'🎌 Anime',    val:'anime style, vibrant colors, studio ghibli'},
-    {label:'🎬 Cinematic',val:'cinematic, dramatic lighting, movie still, anamorphic'},
-    {label:'🖼️ Oil Paint', val:'oil painting, impressionist, textured brushstrokes'},
-    {label:'🌆 Cyberpunk',val:'cyberpunk city, neon lights, rain, futuristic'},
-    {label:'🧸 Cartoon',  val:'cartoon style, bold outlines, flat colors, fun'},
-  ]
-  return(
-    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8,animation:'fadeIn .3s ease'}}>
-      {presets.map(p=>(
-        <button key={p.label} onClick={()=>onSelect(p.val)}
-          style={{padding:'4px 10px',borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,color:t.muted,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-          onMouseOver={e=>{e.currentTarget.style.borderColor=t.purple;e.currentTarget.style.color=t.txt;e.currentTarget.style.background=t.purple+'22'}}
-          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.background=t.tag}}>
-          {p.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ── Věc #2: Smart Suggestions (follow-up otázky) ──────────────────────────────
-function SmartSuggestions({text,t,onSelect}){
-  const[suggestions,setSuggestions]=useState([]),[loaded,setLoaded]=useState(false)
-  useEffect(()=>{
-    if(!text||text.length<50){setSuggestions([]);return}
-    // Generuje 3 follow-up otázky z odpovědi
-    const gen=async()=>{
-      try{
-        const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemma-3-12b-it:generateContent?key='+
-          // Pouzijeme local gemini klíč — tady jen placeholder, skutečně se volá přes edge
-          '',{method:'POST'})
-        // Fallback: predefined otázky ze slov v textu
-      }catch{}
-      // Jednoduche lokalni generovani otazek
-      const words=text.split(' ').filter(w=>w.length>5)
-      const topics=words.slice(0,3).map(w=>w.replace(/[.,!?]/g,''))
-      setSuggestions([
-        `Jak to funguje v praxi?`,
-        `Jaké jsou nevýhody?`,
-        `Dej mi příklad.`,
-      ])
-      setLoaded(true)
-    }
-    const timer=setTimeout(gen,800)
-    return()=>clearTimeout(timer)
-  },[text])
-  if(!loaded||!suggestions.length)return null
-  return(
-    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:8,animation:'hintIn .4s ease'}}>
-      <span style={{fontSize:10,color:t.muted,alignSelf:'center',flexShrink:0}}>💡</span>
-      {suggestions.map(s=>(
-        <button key={s} onClick={()=>onSelect(s)}
-          style={{padding:'4px 10px',borderRadius:20,background:t.tag,border:`1px dashed ${t.border}`,color:t.muted,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt}}
-          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted}}>
-          {s}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ── Věc #3: Retry Button ──────────────────────────────────────────────────────
-function RetryBtn({t,onRetry,lastMsg}){
-  if(!lastMsg)return null
-  return(
-    <button onClick={onRetry}
-      style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:8,background:t.accent+'22',border:`1px solid ${t.accent}44`,color:t.accent,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',animation:'fadeIn .3s ease'}}
-      onMouseOver={e=>{e.currentTarget.style.background=t.accent+'33'}}
-      onMouseOut={e=>{e.currentTarget.style.background=t.accent+'22'}}>
-      🔄 Zkusit znovu
-    </button>
-  )
-}
-
-// ── NOVÁ FUNKCE 1: Počasí karta ───────────────────────────────────────────────
-// ── UNIKÁTNÍ FUNKCE: Prompt Záložky ──────────────────────────────────────────
-// Ukládáš si vlastní oblíbené prompty — kliknutím je vložíš do inputu.
-// Ukládá se do localStorage, přetrvává přes reloady.
-const BOOKMARKS_KEY='lumi_prompt_bookmarks'
-function loadBookmarks(){try{return JSON.parse(localStorage.getItem(BOOKMARKS_KEY)||'[]')}catch{return[]}}
-function saveBookmarks(list){try{localStorage.setItem(BOOKMARKS_KEY,JSON.stringify(list))}catch{}}
-
-function PromptBookmarks({t,input,onSelect}){
-  const[marks,setMarks]=useState(()=>loadBookmarks())
-  const[editMode,setEditMode]=useState(false)
-  const[newLabel,setNewLabel]=useState('')
-
-  const add=()=>{
-    if(!input.trim())return
-    const label=newLabel.trim()||input.trim().slice(0,32)+(input.length>32?'…':'')
-    const next=[{id:uid(),label,text:input.trim(),createdAt:Date.now()},...marks].slice(0,20)
-    setMarks(next);saveBookmarks(next);setNewLabel('')
-  }
-  const del=(id)=>{const next=marks.filter(m=>m.id!==id);setMarks(next);saveBookmarks(next)}
-
-  return(
-    <div style={{marginBottom:8,animation:'dropIn .2s ease'}}>
-      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-        <span style={{fontSize:11,color:t.muted,fontWeight:600}}>🔖 Záložky</span>
-        <button onClick={()=>setEditMode(e=>!e)} style={{fontSize:10,color:t.muted,background:'none',border:'none',cursor:'pointer',padding:'2px 6px',borderRadius:4,background:editMode?t.active:t.btn,border:`1px solid ${t.border}`}}>
-          {editMode?'Hotovo':'Spravovat'}
-        </button>
-        {input.trim()&&(
-          <div style={{display:'flex',gap:4,flex:1}}>
-            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Název záložky…"
-              style={{flex:1,fontSize:11,padding:'3px 8px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:6,outline:'none',fontFamily:'inherit'}}/>
-            <button onClick={add} style={{padding:'3px 9px',borderRadius:6,background:t.accent,color:'#fff',fontSize:11,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
-              + Uložit prompt
-            </button>
-          </div>
-        )}
-      </div>
-      {marks.length===0&&(
-        <div style={{fontSize:11,color:t.muted,padding:'8px 0',textAlign:'center'}}>
-          Žádné záložky. Napiš prompt a klikni „+ Uložit prompt".
-        </div>
-      )}
-      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-        {marks.map(m=>(
-          <div key={m.id} style={{display:'flex',alignItems:'center',gap:0,borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,overflow:'hidden',transition:'border-color .15s'}}
-            onMouseOver={e=>e.currentTarget.style.borderColor=t.accent}
-            onMouseOut={e=>e.currentTarget.style.borderColor=t.border}>
-            <button onClick={()=>onSelect(m.text)}
-              style={{padding:'4px 10px',background:'transparent',color:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
-              title={m.text}>
-              🔖 {m.label}
-            </button>
-            {editMode&&(
-              <button onClick={()=>del(m.id)}
-                style={{padding:'4px 7px',background:'rgba(239,68,68,.15)',color:'#f87171',fontSize:11,border:'none',borderLeft:`1px solid ${t.border}`,cursor:'pointer'}}>
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function WeatherCard({data,t}){
+// ── WeatherCard ───────────────────────────────────────────────────────────────
+const WeatherCard=memo(function WeatherCard({data,t}){
   const{city,country,current,daily}=data
   const dayNames=['Ne','Po','Út','St','Čt','Pá','So']
   return(
     <div style={{borderRadius:14,overflow:'hidden',border:`1px solid ${t.border}`}}>
-      {/* Header */}
-      <div style={{padding:'16px 18px',background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}22)`,borderBottom:`1px solid ${t.border}`}}>
-        <div style={{fontSize:11,color:t.muted,marginBottom:4}}>📍 {city}, {country}</div>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
-          <div style={{fontSize:44,fontWeight:700,color:t.txt}}>{current.temp}°</div>
-          <div>
-            <div style={{fontSize:16,color:t.txt}}>{current.desc}</div>
-            <div style={{fontSize:12,color:t.muted}}>Pocitová {current.feels}°C</div>
-          </div>
+      <div style={{padding:'14px 16px',background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}22)`,borderBottom:`1px solid ${t.border}`}}>
+        <div style={{fontSize:11,color:t.muted,marginBottom:3}}>📍 {city}, {country}</div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{fontSize:40,fontWeight:700,color:t.txt}}>{current.temp}°</div>
+          <div><div style={{fontSize:15,color:t.txt}}>{current.desc}</div><div style={{fontSize:11,color:t.muted}}>Pocitová {current.feels}°C</div></div>
         </div>
-        <div style={{display:'flex',gap:14,marginTop:10}}>
-          <span style={{fontSize:12,color:t.muted}}>💧 {current.humidity}%</span>
-          <span style={{fontSize:12,color:t.muted}}>💨 {current.wind} km/h</span>
+        <div style={{display:'flex',gap:12,marginTop:8}}>
+          <span style={{fontSize:11,color:t.muted}}>💧{current.humidity}%</span>
+          <span style={{fontSize:11,color:t.muted}}>💨{current.wind}km/h</span>
         </div>
       </div>
-      {/* 5-day forecast */}
       <div style={{display:'flex',overflowX:'auto',background:t.tag}}>
         {daily.map((d,i)=>{
           const dt=new Date(d.date),isToday=i===0
           return(
-            <div key={d.date} style={{flex:'0 0 auto',padding:'10px 14px',textAlign:'center',borderRight:`1px solid ${t.border}`,minWidth:80,background:isToday?t.accent+'22':'transparent'}}>
+            <div key={d.date} style={{flex:'0 0 auto',padding:'8px 12px',textAlign:'center',borderRight:`1px solid ${t.border}`,minWidth:72,background:isToday?t.accent+'22':'transparent'}}>
               <div style={{fontSize:10,color:isToday?t.accent:t.muted,fontWeight:isToday?700:400}}>{isToday?'Dnes':dayNames[dt.getDay()]}</div>
-              <div style={{fontSize:18,margin:'6px 0'}}>{d.desc.split(' ')[0]}</div>
-              <div style={{fontSize:12,color:t.txt,fontWeight:600}}>{d.max}°</div>
-              <div style={{fontSize:11,color:t.muted}}>{d.min}°</div>
-              {d.rain>0&&<div style={{fontSize:10,color:'#60a5fa',marginTop:3}}>🌧 {d.rain}mm</div>}
+              <div style={{fontSize:16,margin:'4px 0'}}>{d.desc.split(' ')[0]}</div>
+              <div style={{fontSize:11,color:t.txt,fontWeight:600}}>{d.max}°</div>
+              <div style={{fontSize:10,color:t.muted}}>{d.min}°</div>
+              {d.rain>0&&<div style={{fontSize:9,color:'#60a5fa'}}>🌧{d.rain}mm</div>}
             </div>
           )
         })}
       </div>
-      <div style={{fontSize:10,color:t.muted,padding:'5px 10px',textAlign:'right'}}>OpenMeteo • zdarma, bez API klíče</div>
+      <div style={{fontSize:9,color:t.muted,padding:'3px 8px',textAlign:'right'}}>OpenMeteo • zdarma</div>
     </div>
   )
-}
+})
 
-// ── NOVÁ FUNKCE 2: Šablony zpráv ─────────────────────────────────────────────
-const MSG_TEMPLATES=[
-  {icon:'📧',label:'Formální email',  text:'Napiš formální email na téma: '},
-  {icon:'📝',label:'Shrnutí textu',   text:'Shrň následující text stručně a jasně: '},
-  {icon:'💼',label:'Zpráva z meetingu',text:'Napiš zprávu z meetingu. Témata: '},
-  {icon:'🐛',label:'Bug report',      text:'Napiš bug report: Problém je, že '},
-  {icon:'📣',label:'Post na sociální sítě',text:'Napiš poutavý post na sociální sítě o: '},
-  {icon:'🔍',label:'SEO popis',       text:'Napiš SEO popis produktu: '},
-  {icon:'📖',label:'Vysvětli jednoduše',text:'Vysvětli mi jednoduše (jako bych byl 10 let): '},
-  {icon:'⚡',label:'Bullet pointy',   text:'Přepiš do přehledných bullet pointů: '},
-]
-function TemplatePanel({t,onSelect}){
-  return(
-    <div style={{display:'flex',flexDirection:'column',gap:4,padding:'8px 0',maxHeight:280,overflowY:'auto'}}>
-      {MSG_TEMPLATES.map(tp=>(
-        <button key={tp.label} onClick={()=>onSelect(tp.text)}
-          style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,background:'transparent',color:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',border:'none',transition:'background .12s'}}
-          onMouseOver={e=>e.currentTarget.style.background=t.active}
-          onMouseOut={e=>e.currentTarget.style.background='transparent'}>
-          <span style={{fontSize:18,flexShrink:0}}>{tp.icon}</span>
-          <span style={{color:t.muted,fontSize:12}}>{tp.label}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ── NOVÁ FUNKCE 3: Inline kalkulačka ─────────────────────────────────────────
-function CalcWidget({t,onResult}){
-  const[expr,setExpr]=useState(''),[result,setResult]=useState(''),[err,setErr]=useState(false)
-  const calc=()=>{
-    try{
-      // Bezpecny eval pres Function
-      const cleaned=expr.replace(/[^0-9+\-*/.()%\s]/g,'')
-      if(!cleaned.trim())return
-      // eslint-disable-next-line no-new-func
-      const res=new Function(`"use strict";return(${cleaned})`)()
-      setResult(String(res));setErr(false)
-    }catch{setResult('Chyba');setErr(true)}
-  }
-  return(
-    <div style={{padding:'10px 12px',background:t.tag,borderRadius:10,border:`1px solid ${t.border}`}}>
-      <div style={{fontSize:11,color:t.muted,marginBottom:6}}>🔢 Kalkulačka</div>
-      <div style={{display:'flex',gap:6}}>
-        <input value={expr} onChange={e=>setExpr(e.target.value)} onKeyDown={e=>e.key==='Enter'&&calc()}
-          placeholder="2 + 2 * 10 / 3 ..."
-          style={{flex:1,padding:'7px 10px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'monospace'}}/>
-        <button onClick={calc} style={{padding:'7px 12px',borderRadius:7,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>=</button>
-      </div>
-      {result&&(
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,padding:'8px 12px',borderRadius:7,background:err?'rgba(239,68,68,.1)':t.success,border:`1px solid ${err?'#f87171':t.succ}`}}>
-          <span style={{fontSize:18,fontWeight:700,color:err?'#f87171':t.succ,fontFamily:'monospace'}}>{result}</span>
-          {!err&&<button onClick={()=>{onResult(result);setExpr('');setResult('')}} style={{fontSize:11,color:t.accent,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Vložit do chatu →</button>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── NOVÁ FUNKCE 4: Přepínač jazyka ───────────────────────────────────────────
-const RESPONSE_LANGS=[
-  {code:'Czech',    flag:'🇨🇿',label:'Česky'},
-  {code:'English',  flag:'🇬🇧',label:'English'},
-  {code:'Slovak',   flag:'🇸🇰',label:'Slovensky'},
-  {code:'German',   flag:'🇩🇪',label:'Deutsch'},
-  {code:'French',   flag:'🇫🇷',label:'Français'},
-  {code:'Spanish',  flag:'🇪🇸',label:'Español'},
-]
-
-// ── NOVÁ FUNKCE 5: Počasí toolbar tlačítko helper ────────────────────────────
-function WeatherInput({t,onSearch}){
-  const[city,setCity]=useState('')
-  return(
-    <div style={{display:'flex',gap:6,marginBottom:6,animation:'dropIn .2s ease'}}>
-      <input value={city} onChange={e=>setCity(e.target.value)} onKeyDown={e=>e.key==='Enter'&&city.trim()&&onSearch(city)}
-        placeholder="Zadej město… (Praha, Brno…)"
-        style={{flex:1,padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.accent}`,borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit'}}
-        autoFocus/>
-      <button onClick={()=>city.trim()&&onSearch(city)}
-        style={{padding:'7px 14px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
-        🌤️
-      </button>
-    </div>
-  )
-}
-
-function SparkleBtn({t,selectedText,onGenerate}){
-  if(!selectedText)return null
-  return(
-    <button onClick={()=>onGenerate(selectedText)}
-      style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:20,background:`linear-gradient(135deg,${t.gradA},${t.gradB})`,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',boxShadow:`0 4px 16px ${t.gradA}44`,animation:'sparkleIn .25s cubic-bezier(.34,1.56,.64,1)'}}>
-      {Ic.spark} Vizualizovat výběr
-    </button>
-  )
-}
-
-function ImgGrid({images,query,t}){
-  const[errs,setErrs]=useState({})
-  if(!images?.length)return<div style={{fontSize:13,color:t.muted}}>Žádné fotografie pro „{query}"</div>
-  return(
-    <div>
-      <div style={{fontSize:12,color:t.muted,marginBottom:9,display:'flex',alignItems:'center',gap:6}}>{Ic.imgSrch}<strong style={{color:t.txt,marginLeft:4}}>„{query}"</strong></div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5}}>
-        {images.map((img,i)=>!errs[i]&&(
-          <a key={img.id||i} href={img.source} target="_blank" rel="noopener noreferrer"
-            style={{display:'block',borderRadius:8,overflow:'hidden',border:`1px solid ${t.border}`,textDecoration:'none',background:t.card,transition:'transform .2s cubic-bezier(.34,1.56,.64,1)'}}
-            onMouseOver={e=>e.currentTarget.style.transform='scale(1.04)'}
-            onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
-            <div style={{position:'relative',paddingBottom:'66%',overflow:'hidden'}}>
-              <img src={img.thumbnail||img.url} alt={img.title||query} onError={()=>setErrs(p=>({...p,[i]:true}))}
-                style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>
-            </div>
-            <div style={{padding:'4px 7px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:10,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📷 {img.author||'Unsplash'}</span>
-              {Ic.extLink}
-            </div>
-          </a>
-        ))}
-      </div>
-      <div style={{fontSize:10,color:t.muted,marginTop:7}}>Fotografie z <a href="https://unsplash.com" target="_blank" rel="noopener noreferrer" style={{color:t.accent,textDecoration:'none'}}>Unsplash</a></div>
-    </div>
-  )
-}
-
-function WebSearchResults({data,t}){
+// ── WebSearchResults ──────────────────────────────────────────────────────────
+const WebSearchResults=memo(function WebSearchResults({data,t}){
   const{results=[],summary,query,searchType='web',provider=''}=data
-  if(!results.length)return(
-    <div style={{padding:'12px',textAlign:'center',color:t.muted,fontSize:13}}>
-      Žádné výsledky pro „{query}". Zkus jiný dotaz.
-    </div>
-  )
+  if(!results.length)return<div style={{color:t.muted,fontSize:13,textAlign:'center',padding:12}}>Žádné výsledky pro „{query}". Zkus jiný dotaz.</div>
   return(
     <div>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-        <span style={{fontSize:14}}>{searchType==='video'?'🎬':searchType==='image'?'🖼️':'🌐'}</span>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:10,flexWrap:'wrap'}}>
+        <span style={{fontSize:13}}>{searchType==='video'?'🎬':searchType==='image'?'🖼️':'🌐'}</span>
         <strong style={{color:t.txt,fontSize:13}}>„{query}"</strong>
-        <span style={{fontSize:11,color:t.muted,background:t.btn,padding:'2px 7px',borderRadius:4,border:`1px solid ${t.border}`}}>{provider||'Web Search'}</span>
-        <span style={{fontSize:11,color:t.muted}}>{results.length} výsledků</span>
+        <span style={{fontSize:10,color:t.muted,background:t.btn,padding:'1px 6px',borderRadius:4,border:`1px solid ${t.border}`}}>{provider||'Search'}</span>
+        <span style={{fontSize:10,color:t.muted}}>{results.length} výsledků</span>
       </div>
       {summary&&searchType==='web'&&(
-        <div style={{padding:'10px 12px',borderRadius:9,background:t.accent+'18',border:`1px solid ${t.accent}33`,marginBottom:12,fontSize:13,color:t.txt,lineHeight:1.6}}>
-          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,fontSize:11,color:t.accent,fontWeight:600}}>
-            <LumiAvatar size={14} gradient={[t.gradA,t.gradB]}/> Lumi shrnuje
-          </div>
+        <div style={{padding:'9px 11px',borderRadius:9,background:t.accent+'18',border:`1px solid ${t.accent}33`,marginBottom:10,fontSize:13,color:t.txt,lineHeight:1.6}}>
+          <div style={{fontSize:10,color:t.accent,fontWeight:600,marginBottom:4,display:'flex',alignItems:'center',gap:5}}><LumiAvatar size={12} gradient={[t.gradA,t.gradB]}/> Lumi shrnuje</div>
           <div dangerouslySetInnerHTML={{__html:renderMD(summary,t.isDark)}}/>
         </div>
       )}
       {searchType==='image'&&(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}}>
           {results.slice(0,9).map((r,i)=>(
-            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-              style={{display:'block',borderRadius:7,overflow:'hidden',border:`1px solid ${t.border}`,textDecoration:'none',transition:'transform .15s'}}
-              onMouseOver={e=>e.currentTarget.style.transform='scale(1.03)'}
-              onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
+            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{display:'block',borderRadius:7,overflow:'hidden',border:`1px solid ${t.border}`,textDecoration:'none',transition:'transform .15s'}} onMouseOver={e=>e.currentTarget.style.transform='scale(1.03)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
               <div style={{position:'relative',paddingBottom:'75%',background:t.btn}}>
-                {r.thumb&&<img src={r.thumb} alt={r.title||''} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>}
-                {!r.thumb&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🖼️</div>}
+                {r.thumb&&<img src={r.thumb} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>}
+                {!r.thumb&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🖼️</div>}
               </div>
             </a>
           ))}
         </div>
       )}
       {searchType==='video'&&(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'flex',flexDirection:'column',gap:7}}>
           {results.slice(0,8).map((r,i)=>(
-            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-              style={{display:'flex',gap:10,padding:'10px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,textDecoration:'none',transition:'background .12s'}}
-              onMouseOver={e=>e.currentTarget.style.background=t.active}
-              onMouseOut={e=>e.currentTarget.style.background=t.btn}>
-              <div style={{width:88,height:54,borderRadius:6,overflow:'hidden',background:t.card,flexShrink:0,position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                {r.thumb?<img src={r.thumb} alt={r.title||''} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:26}}>▶️</span>}
-                {r.duration&&<span style={{position:'absolute',bottom:2,right:3,fontSize:9,background:'rgba(0,0,0,.75)',color:'#fff',padding:'1px 4px',borderRadius:3}}>{r.duration}</span>}
+            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{display:'flex',gap:9,padding:'9px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,textDecoration:'none',transition:'background .12s'}} onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background=t.btn}>
+              <div style={{width:80,height:50,borderRadius:5,overflow:'hidden',background:t.card,flexShrink:0,position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                {r.thumb?<img src={r.thumb} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:22}}>▶️</span>}
+                {r.duration&&<span style={{position:'absolute',bottom:2,right:2,fontSize:9,background:'rgba(0,0,0,.8)',color:'#fff',padding:'1px 3px',borderRadius:2}}>{r.duration}</span>}
               </div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:t.accent,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{r.title}</div>
-                <div style={{fontSize:11,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.desc}</div>
-                {r.published&&<div style={{fontSize:10,color:t.muted,marginTop:3}}>{r.published}</div>}
+                <div style={{fontSize:12,fontWeight:600,color:t.accent,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>{r.title}</div>
+                <div style={{fontSize:10,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.desc}</div>
+                {r.published&&<div style={{fontSize:9,color:t.muted,marginTop:2}}>{r.published}</div>}
               </div>
-              <div style={{color:t.muted,flexShrink:0,display:'flex',alignItems:'center'}}>{Ic.extLink}</div>
             </a>
           ))}
         </div>
       )}
       {searchType==='web'&&(
-        <div style={{display:'flex',flexDirection:'column',gap:7}}>
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
           {results.slice(0,8).map((r,i)=>(
-            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-              style={{display:'block',padding:'10px 12px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,textDecoration:'none',transition:'background .12s'}}
-              onMouseOver={e=>e.currentTarget.style.background=t.active}
-              onMouseOut={e=>e.currentTarget.style.background=t.btn}>
-              <div style={{fontSize:13,fontWeight:600,color:t.accent,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{r.title}</div>
-              <div style={{fontSize:10,color:t.muted,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.url}</div>
-              {r.desc&&<div style={{fontSize:12,color:t.txt,lineHeight:1.5,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{r.desc}</div>}
+            <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" style={{display:'block',padding:'9px 11px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,textDecoration:'none',transition:'background .12s'}} onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background=t.btn}>
+              <div style={{fontSize:12,fontWeight:600,color:t.accent,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>{r.title}</div>
+              <div style={{fontSize:9,color:t.muted,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.url}</div>
+              {r.desc&&<div style={{fontSize:11,color:t.txt,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{r.desc}</div>}
             </a>
           ))}
         </div>
       )}
-      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:4}}>
-        🔍 Powered by {provider||'Web Search'} &nbsp;
-        <a href={`https://duckduckgo.com/?q=${encodeURIComponent(query)}`} target="_blank" rel="noopener noreferrer" style={{color:t.muted}}>Hledat online</a>
-      </div>
+      <div style={{fontSize:9,color:t.muted,marginTop:7,textAlign:'right'}}>🔍 {provider}</div>
     </div>
   )
-}
+})
 
-function GenImg({imageData,mimeType,prompt,modelId,t}){
+// ── GenImg ────────────────────────────────────────────────────────────────────
+const GenImg=memo(function GenImg({imageData,mimeType,prompt,modelId,t}){
   const[loaded,setLoaded]=useState(false),[prog,setProg]=useState(0)
   const src=`data:${mimeType||'image/jpeg'};base64,${imageData}`
   const modelName=IMG_MODELS.find(m=>m.id===modelId)?.name||'Pollinations'
   const dl=()=>{const a=document.createElement('a');a.href=src;a.download=`lumi-${Date.now()}.jpg`;a.click()}
-  useEffect(()=>{if(loaded)return;setProg(0);const id=setInterval(()=>setProg(p=>p>=85?85:p+Math.random()*8),400);return()=>clearInterval(id)},[loaded])
+  useEffect(()=>{if(loaded)return;const id=setInterval(()=>setProg(p=>p>=85?85:p+Math.random()*8),400);return()=>clearInterval(id)},[loaded])
   useEffect(()=>{if(loaded)setProg(100)},[loaded])
   return(
     <div>
-      <div style={{fontSize:12,color:t.muted,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-        {Ic.magic} Pollinations.ai · <strong style={{color:t.purple}}>{modelName}</strong>
-      </div>
+      <div style={{fontSize:11,color:t.muted,marginBottom:7,display:'flex',alignItems:'center',gap:5}}>{Ic.magic} Pollinations · <strong style={{color:t.purple}}>{modelName}</strong></div>
       {!loaded&&(
-        <div style={{width:320,maxWidth:'100%',borderRadius:12,overflow:'hidden',border:`1px solid ${t.border}`}}>
-          <div className="shimmer" style={{height:280}}/>
-          <div style={{height:3,background:t.btn}}>
-            <div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${prog}%`,transition:'width .4s ease'}}/>
-          </div>
-          <div style={{padding:'8px 12px',display:'flex',alignItems:'center',gap:8}}>
-            <div className="dot"><span/><span/><span/></div>
-            <span style={{fontSize:11,color:t.muted}}>Generuji obrázek…</span>
-          </div>
+        <div style={{width:300,maxWidth:'100%',borderRadius:12,overflow:'hidden',border:`1px solid ${t.border}`}}>
+          <div className="shimmer" style={{height:260}}/>
+          <div style={{height:3,background:t.btn}}><div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${prog}%`,transition:'width .4s'}}/></div>
+          <div style={{padding:'7px 11px',display:'flex',alignItems:'center',gap:7}}><div className="dot"><span/><span/><span/></div><span style={{fontSize:11,color:t.muted}}>Generuji…</span></div>
         </div>
       )}
       <div style={{position:'relative',display:loaded?'inline-block':'none',maxWidth:'100%'}}>
-        <img src={src} alt={prompt} onLoad={()=>setLoaded(true)} style={{maxWidth:'100%',maxHeight:460,borderRadius:12,display:'block',border:`1px solid ${t.border}`,animation:'imgReveal .6s cubic-bezier(.34,1.06,.64,1)'}}/>
-        {loaded&&<button onClick={dl} style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:'rgba(0,0,0,.7)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',backdropFilter:'blur(6px)',fontFamily:'inherit'}}>
-          {Ic.dl} Stáhnout
-        </button>}
+        <img src={src} alt={prompt} onLoad={()=>setLoaded(true)} style={{maxWidth:'100%',maxHeight:460,borderRadius:12,display:'block',border:`1px solid ${t.border}`,animation:'imgReveal .6s ease'}}/>
+        {loaded&&<button onClick={dl} style={{position:'absolute',top:8,right:8,display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:7,background:'rgba(0,0,0,.7)',color:'#fff',fontSize:11,border:'none',cursor:'pointer',fontFamily:'inherit'}}>{Ic.dl} Stáhnout</button>}
       </div>
-      {prompt&&loaded&&<div style={{fontSize:11,color:t.muted,marginTop:6,fontStyle:'italic'}}>„{prompt}"</div>}
+      {prompt&&loaded&&<div style={{fontSize:11,color:t.muted,marginTop:5,fontStyle:'italic'}}>„{prompt}"</div>}
     </div>
   )
-}
+})
 
-function QuizCard({questions,t}){
+// ── ImgGrid ───────────────────────────────────────────────────────────────────
+const ImgGrid=memo(function ImgGrid({images,query,t}){
+  if(!images?.length)return<div style={{fontSize:13,color:t.muted}}>Žádné fotografie pro „{query}"</div>
+  return(
+    <div>
+      <div style={{fontSize:11,color:t.muted,marginBottom:8}}>📷 „{query}"</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5}}>
+        {images.slice(0,9).map((img,i)=>(
+          <a key={img.id||i} href={img.source||img.url} target="_blank" rel="noopener noreferrer" style={{display:'block',borderRadius:8,overflow:'hidden',border:`1px solid ${t.border}`,textDecoration:'none',transition:'transform .2s'}} onMouseOver={e=>e.currentTarget.style.transform='scale(1.04)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
+            <div style={{position:'relative',paddingBottom:'66%',overflow:'hidden'}}>
+              <img src={img.thumbnail||img.thumb||img.url} alt={img.title||query} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>
+            </div>
+            {img.author&&<div style={{padding:'3px 6px',fontSize:10,color:t.muted}}>📷 {img.author}</div>}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+})
+
+// ── QuizCard ──────────────────────────────────────────────────────────────────
+const QuizCard=memo(function QuizCard({questions,t}){
   const[cur,setCur]=useState(0),[answers,setAnswers]=useState({}),[done,setDone]=useState(false)
   if(!questions?.length)return<div style={{padding:'12px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,fontSize:13,color:t.muted}}>Kvíz nemá otázky.</div>
   const q=questions[cur],total=questions.length
@@ -605,36 +222,32 @@ function QuizCard({questions,t}){
   if(done){
     const pct=Math.round((score/total)*100)
     return(
-      <div style={{padding:'20px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,textAlign:'center',animation:'fadeInScale .4s cubic-bezier(.34,1.56,.64,1)'}}>
-        <div style={{fontSize:44,marginBottom:8}}>{pct>=80?'🏆':pct>=60?'👍':pct>=40?'😊':'📚'}</div>
-        <div style={{fontSize:24,fontWeight:700,color:t.txt}}>{score}/{total}</div>
-        <div style={{fontSize:14,color:t.muted,marginTop:4}}>{pct}% správně</div>
-        <div style={{width:'100%',height:8,background:t.btn,borderRadius:4,marginTop:14,overflow:'hidden'}}>
-          <div style={{width:`${pct}%`,height:'100%',background:pct>=80?t.succ:pct>=60?t.accent:'#f59e0b',borderRadius:4,transition:'width 1.4s cubic-bezier(.4,0,.2,1)'}}/>
-        </div>
-        <div style={{fontSize:13,color:t.muted,marginTop:12,marginBottom:18}}>{pct>=80?'Výborně!':pct>=60?'Dobrá práce!':pct>=40?'Slušný výsledek!':'Příště lépe!'}</div>
-        <button onClick={()=>{setAnswers({});setCur(0);setDone(false)}} style={{padding:'10px 24px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>🔄 Zkusit znovu</button>
+      <div style={{padding:'18px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,textAlign:'center',animation:'fadeInScale .4s ease'}}>
+        <div style={{fontSize:40,marginBottom:6}}>{pct>=80?'🏆':pct>=60?'👍':pct>=40?'😊':'📚'}</div>
+        <div style={{fontSize:22,fontWeight:700,color:t.txt}}>{score}/{total}</div>
+        <div style={{fontSize:13,color:t.muted,marginTop:3}}>{pct}% správně</div>
+        <div style={{width:'100%',height:7,background:t.btn,borderRadius:4,marginTop:12,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',background:pct>=80?t.succ:pct>=60?t.accent:'#f59e0b',borderRadius:4,transition:'width 1.2s ease'}}/></div>
+        <div style={{fontSize:12,color:t.muted,margin:'10px 0 14px'}}>{pct>=80?'Výborně!':pct>=60?'Dobrá práce!':pct>=40?'Slušný výsledek!':'Příště lépe!'}</div>
+        <button onClick={()=>{setAnswers({});setCur(0);setDone(false)}} style={{padding:'9px 20px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>🔄 Znovu</button>
       </div>
     )
   }
   return(
-    <div style={{padding:'14px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-        <div style={{flex:1,height:4,background:t.btn,borderRadius:2,overflow:'hidden'}}>
-          <div style={{width:`${((cur+1)/total)*100}%`,height:'100%',background:t.accent,transition:'width .4s'}}/>
-        </div>
+    <div style={{padding:'13px 15px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:11}}>
+        <div style={{flex:1,height:4,background:t.btn,borderRadius:2,overflow:'hidden'}}><div style={{width:`${((cur+1)/total)*100}%`,height:'100%',background:t.accent,transition:'width .4s'}}/></div>
         <span style={{fontSize:11,color:t.muted}}>{cur+1}/{total}</span>
       </div>
-      <div style={{fontSize:13,fontWeight:600,color:t.txt,marginBottom:12,lineHeight:1.4}}>🎓 {q.question}</div>
-      <div style={{display:'flex',flexDirection:'column',gap:7}}>
+      <div style={{fontSize:13,fontWeight:600,color:t.txt,marginBottom:11,lineHeight:1.4}}>🎓 {q.question}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
         {q.options?.map((opt,i)=>{
           const sel=answers[cur],isC=i===q.correct,isSel=sel===i
           let bg=t.btn,clr=t.txt,brd=t.border
           if(sel!==undefined){if(isC){bg=t.success;clr=t.succ;brd=t.succ}else if(isSel){bg='rgba(239,68,68,.15)';clr='#fca5a5';brd='#f87171'}}
           return(
             <button key={i} onClick={()=>sel===undefined&&setAnswers(p=>({...p,[cur]:i}))} disabled={sel!==undefined}
-              style={{padding:'9px 13px',borderRadius:8,background:bg,color:clr,border:`1.5px solid ${brd}`,fontSize:13,textAlign:'left',cursor:sel===undefined?'pointer':'default',fontFamily:'inherit',transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
-              <span style={{width:22,height:22,borderRadius:'50%',background:'rgba(255,255,255,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{String.fromCharCode(65+i)}</span>
+              style={{padding:'8px 12px',borderRadius:8,background:bg,color:clr,border:`1.5px solid ${brd}`,fontSize:13,textAlign:'left',cursor:sel===undefined?'pointer':'default',fontFamily:'inherit',transition:'all .2s',display:'flex',alignItems:'center',gap:7}}>
+              <span style={{width:20,height:20,borderRadius:'50%',background:'rgba(255,255,255,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{String.fromCharCode(65+i)}</span>
               <span>{opt}</span>
               {sel!==undefined&&isC&&<span style={{marginLeft:'auto',fontWeight:700}}>✓</span>}
               {sel!==undefined&&isSel&&!isC&&<span style={{marginLeft:'auto'}}>✗</span>}
@@ -642,21 +255,13 @@ function QuizCard({questions,t}){
           )
         })}
       </div>
-      {answers[cur]!==undefined&&q.explanation&&(
-        <div style={{marginTop:10,padding:'10px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,fontSize:12,color:t.muted,lineHeight:1.5}}>
-          💡 {q.explanation}
-        </div>
-      )}
-      {answers[cur]!==undefined&&(
-        <div style={{marginTop:12}}>
-          {cur<total-1?<button onClick={()=>setCur(c=>c+1)} style={{width:'100%',padding:'9px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Další →</button>
-            :<button onClick={()=>setDone(true)} style={{width:'100%',padding:'9px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Výsledky 🏆</button>}
-        </div>
-      )}
+      {answers[cur]!==undefined&&q.explanation&&<div style={{marginTop:8,padding:'8px 11px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,fontSize:11,color:t.muted}}>💡 {q.explanation}</div>}
+      {answers[cur]!==undefined&&<div style={{marginTop:10}}>{cur<total-1?<button onClick={()=>setCur(c=>c+1)} style={{width:'100%',padding:'8px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Další →</button>:<button onClick={()=>setDone(true)} style={{width:'100%',padding:'8px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Výsledky 🏆</button>}</div>}
     </div>
   )
-}
+})
 
+// ── VoiceBtn ──────────────────────────────────────────────────────────────────
 function VoiceBtn({t,onTranscript}){
   const[on,setOn]=useState(false),[txt,setTxt]=useState(''),ref=useRef(null)
   const ok=typeof window!=='undefined'&&('SpeechRecognition' in window||'webkitSpeechRecognition' in window)
@@ -671,358 +276,425 @@ function VoiceBtn({t,onTranscript}){
   }
   return(
     <div style={{position:'relative'}}>
-      <button onClick={toggle} title={on?'Stop':'Hlas'}
-        style={{display:'flex',alignItems:'center',justifyContent:'center',padding:6,borderRadius:8,background:on?'#ef4444':t.btn,color:on?'#fff':t.muted,border:`1px solid ${on?'#ef4444':t.border}`,cursor:'pointer',transition:'all .2s'}}>
-        {Ic.mic}
-      </button>
-      {on&&txt&&<div style={{position:'absolute',bottom:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,color:t.txt,whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',boxShadow:'0 4px 12px rgba(0,0,0,.3)',zIndex:5}}>„{txt}"</div>}
+      <button onClick={toggle} title={on?'Stop':'Hlas'} style={{display:'flex',alignItems:'center',justifyContent:'center',padding:6,borderRadius:8,background:on?'#ef4444':t.btn,color:on?'#fff':t.muted,border:`1px solid ${on?'#ef4444':t.border}`,cursor:'pointer',transition:'all .2s'}}>{Ic.mic}</button>
+      {on&&txt&&<div style={{position:'absolute',bottom:'calc(100% + 5px)',left:'50%',transform:'translateX(-50%)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,color:t.txt,whiteSpace:'nowrap',maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',boxShadow:'0 4px 12px rgba(0,0,0,.3)',zIndex:5}}>„{txt}"</div>}
     </div>
   )
 }
 
-function MsgActions({msg,t,isLoggedIn,token,onExplain,onSaveMemory,onStar,starred,onReact,reactions,onPin,pinned}){
-  const[rat,setRat]=useState(null),[showFix,setShowFix]=useState(false),[fix,setFix]=useState(''),[copied,setCopied]=useState(false)
+// ── MsgActions ────────────────────────────────────────────────────────────────
+const MsgActions=memo(function MsgActions({msg,t,isLoggedIn,token,onExplain,onStar,starred,onPin,pinned}){
+  const[rat,setRat]=useState(null),[copied,setCopied]=useState(false)
   const copy=()=>{navigator.clipboard.writeText(msg.content);setCopied(true);setTimeout(()=>setCopied(false),1500)}
-  const feedback=async r=>{setRat(r);if(token&&msg.dbId){try{await callEdge('feedback',{messageId:msg.dbId,rating:r,correction:fix||null},token)}catch{}}setShowFix(false)}
+  const feedback=async r=>{setRat(r);if(token&&msg.dbId){try{await callEdge('feedback',{messageId:msg.dbId,rating:r},token)}catch{}}}
   return(
-    <div>
-      <div style={{display:'flex',alignItems:'center',gap:4,marginTop:5,flexWrap:'wrap'}}>
-        <button onClick={copy} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:copied?t.success:t.btn,color:copied?t.succ:t.muted,fontSize:11,border:`1px solid ${copied?t.succ:t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .2s'}}>
-          {Ic.copy}{copied?' ✓':' Kopírovat'}
-        </button>
-        <button onClick={()=>onExplain(msg)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>
-          {Ic.info} Jak jsem to zjistil?
-        </button>
-        {isLoggedIn&&<>
-          <button onClick={()=>onSaveMemory(msg.content)} style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>{Ic.memory} Zapamatovat</button>
-          <button onClick={()=>onStar(msg)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:starred?'#f59e0b22':t.btn,color:starred?'#f59e0b':t.muted,border:`1px solid ${starred?'#f59e0b':t.border}`,cursor:'pointer',transition:'all .2s'}}>{starred?Ic.starF:Ic.star}</button>
-          <button onClick={()=>onPin(msg)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:pinned?t.accent+'22':t.btn,color:pinned?t.accent:t.muted,border:`1px solid ${pinned?t.accent:t.border}`,cursor:'pointer',transition:'all .2s'}} title="Připnout">{Ic.pin}</button>
-        </>}
-        <button onClick={()=>feedback(1)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:rat===1?t.success:t.btn,color:rat===1?t.succ:t.muted,border:`1px solid ${rat===1?t.succ:t.border}`,cursor:'pointer'}}>{Ic.thumbUp}</button>
-        <button onClick={()=>rat===-1?setShowFix(true):feedback(-1)} style={{display:'flex',padding:'3px 6px',borderRadius:5,background:rat===-1?'rgba(239,68,68,.15)':t.btn,color:rat===-1?'#fca5a5':t.muted,border:`1px solid ${rat===-1?'#f87171':t.border}`,cursor:'pointer'}}>{Ic.thumbDn}</button>
-      </div>
-      <QuickReactions msgId={msg.id} reactions={reactions} onReact={onReact} t={t}/>
-      {showFix&&(
-        <div style={{marginTop:6,padding:12,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10}}>
-          <textarea value={fix} onChange={e=>setFix(e.target.value)} rows={3} placeholder="Správná odpověď…"
-            style={{width:'100%',padding:'8px 10px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:7,fontSize:12,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-          <div style={{display:'flex',gap:6,marginTop:8}}>
-            <button onClick={()=>setShowFix(false)} style={{padding:'5px 12px',borderRadius:7,background:t.btn,color:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
-            <button onClick={()=>feedback(-1)} style={{padding:'5px 12px',borderRadius:7,background:t.accent,color:'#fff',fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Odeslat</button>
-          </div>
-        </div>
-      )}
+    <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
+      <button onClick={copy} style={{display:'flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:5,background:copied?t.success:t.btn,color:copied?t.succ:t.muted,fontSize:11,border:`1px solid ${copied?t.succ:t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .2s'}}>{Ic.copy}{copied?' ✓':' Kopírovat'}</button>
+      <button onClick={()=>onExplain(msg)} style={{display:'flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:5,background:t.btn,color:t.muted,fontSize:11,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>{Ic.info} Jak?</button>
+      {isLoggedIn&&<>
+        <button onClick={()=>onStar(msg)} style={{display:'flex',padding:'2px 5px',borderRadius:5,background:starred?'#f59e0b22':t.btn,color:starred?'#f59e0b':t.muted,border:`1px solid ${starred?'#f59e0b':t.border}`,cursor:'pointer',transition:'all .2s'}}>{starred?Ic.starF:Ic.star}</button>
+        <button onClick={()=>onPin(msg)} style={{display:'flex',padding:'2px 5px',borderRadius:5,background:pinned?t.accent+'22':t.btn,color:pinned?t.accent:t.muted,border:`1px solid ${pinned?t.accent:t.border}`,cursor:'pointer',transition:'all .2s'}} title="Připnout">{Ic.pin}</button>
+      </>}
+      <button onClick={()=>feedback(1)} style={{display:'flex',padding:'2px 5px',borderRadius:5,background:rat===1?t.success:t.btn,color:rat===1?t.succ:t.muted,border:`1px solid ${rat===1?t.succ:t.border}`,cursor:'pointer'}}>{Ic.thumbUp}</button>
+      <button onClick={()=>feedback(-1)} style={{display:'flex',padding:'2px 5px',borderRadius:5,background:rat===-1?'rgba(239,68,68,.15)':t.btn,color:rat===-1?'#fca5a5':t.muted,border:`1px solid ${rat===-1?'#f87171':t.border}`,cursor:'pointer'}}>{Ic.thumbDn}</button>
     </div>
   )
-}
+})
 
-function ToolDropdown({t,label,icon,children,accent,active}){
+// ── Dropdown ──────────────────────────────────────────────────────────────────
+function Dropdown({t,label,icon,children,active,accent}){
   const[open,setOpen]=useState(false),ref=useRef(null)
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[])
   const clr=accent||t.accent
   return(
     <div ref={ref} style={{position:'relative'}}>
-      <button onClick={()=>setOpen(o=>!o)}
-        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,background:(open||active)?clr+'22':t.btn,color:(open||active)?clr:t.muted,border:`1px solid ${(open||active)?clr:t.border}`,fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s'}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,background:(open||active)?clr+'22':t.btn,color:(open||active)?clr:t.muted,border:`1px solid ${(open||active)?clr:t.border}`,fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s'}}>
         {icon}{label}{open?Ic.chevUp:Ic.chevDn}
       </button>
       {open&&(
-        <div style={{position:'absolute',bottom:'calc(100% + 8px)',left:0,minWidth:240,background:t.modal,border:`1px solid ${t.border}`,borderRadius:14,padding:6,zIndex:40,boxShadow:`0 12px 40px rgba(0,0,0,.45)`,animation:'dropIn .2s cubic-bezier(.34,1.56,.64,1)'}}>
+        <div style={{position:'absolute',bottom:'calc(100% + 8px)',left:0,minWidth:230,background:t.modal,border:`1px solid ${t.border}`,borderRadius:12,padding:5,zIndex:40,boxShadow:'0 12px 40px rgba(0,0,0,.45)',animation:'dropIn .2s ease'}}>
           {children}
-          <button onClick={()=>setOpen(false)} style={{position:'absolute',top:6,right:6,color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+          <button onClick={()=>setOpen(false)} style={{position:'absolute',top:5,right:5,color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
         </div>
       )}
     </div>
   )
 }
-
-function AddMemoryModal({t,onClose,onSave}){
-  const[content,setContent]=useState(''),[cat,setCat]=useState('personal')
+function DItem({t,onClick,active,clr,icon,label,sub}){
   return(
-    <>
-      <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:58,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:59,width:'min(420px,96vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,padding:24,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .3s cubic-bezier(.34,1.56,.64,1)'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
-          <h3 style={{fontSize:15,fontWeight:600,color:t.txt}}>➕ Přidat do paměti Lumi</h3>
-          <button onClick={onClose} style={{color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-        </div>
-        <textarea value={content} onChange={e=>setContent(e.target.value)} rows={4} placeholder="Např. Jmenuji se Radek, jsem student…"
-          style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:18}}>
-          {MEM_CATEGORIES.map(c=>(
-            <button key={c.id} onClick={()=>setCat(c.id)}
-              style={{padding:'5px 10px',borderRadius:6,background:cat===c.id?t.accent:t.btn,color:cat===c.id?'#fff':t.muted,fontSize:12,border:`1px solid ${cat===c.id?t.accent:t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',fontWeight:cat===c.id?600:400}}>
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-          <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,background:t.btn,color:t.txt,fontSize:13,fontWeight:500,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
-          <button onClick={()=>{if(content.trim()){onSave(content.trim(),cat);onClose()}}} disabled={!content.trim()}
-            style={{padding:'8px 16px',borderRadius:8,background:content.trim()?t.accent:t.btn,color:content.trim()?'#fff':t.muted,fontSize:13,fontWeight:600,border:'none',cursor:content.trim()?'pointer':'default',fontFamily:'inherit',transition:'all .15s'}}>
-            Uložit
-          </button>
-        </div>
-      </div>
-    </>
+    <button onClick={onClick} style={{width:'100%',display:'flex',alignItems:'center',gap:9,padding:'8px 11px',background:active?clr+'22':'transparent',color:active?clr:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
+      <span style={{fontSize:15}}>{icon}</span>
+      <div style={{flex:1}}><div style={{fontWeight:active?600:400}}>{label}</div>{sub&&<div style={{fontSize:10,color:t.muted,marginTop:1}}>{sub}</div>}</div>
+      {active&&<span style={{color:clr,flexShrink:0}}>{Ic.check}</span>}
+    </button>
   )
 }
 
-function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLoggedIn,userId,memory,setMemory,aiModel,setAiModel,onAddMemory}){
-  const[tmp,setTmp]=useState(sysPmt),[tmpAI,setTmpAI]=useState(aiModel),[memList,setMemList]=useState([]),[tab,setTab]=useState('appearance')
+// ── UNIKÁTNÍ FUNKCE: Focus Timer (Pomodoro) ───────────────────────────────────
+function FocusTimer({t,onClose}){
+  const[phase,setPhase]=useState('idle')
+  const[secs,setSecs]=useState(25*60)
+  const[total,setTotal]=useState(25*60)
+  const[sessions,setSessions]=useState(0)
+  const[workMin,setWorkMin]=useState(25)
+  const[breakMin,setBreakMin]=useState(5)
+  const ref=useRef(null)
+  useEffect(()=>{
+    if(phase==='idle')return
+    ref.current=setInterval(()=>{
+      setSecs(s=>{
+        if(s<=1){
+          clearInterval(ref.current)
+          if(phase==='work'){setSessions(n=>n+1);setPhase('break');const b=breakMin*60;setSecs(b);setTotal(b)}
+          else{setPhase('idle');setSecs(workMin*60);setTotal(workMin*60)}
+          return 0
+        }
+        return s-1
+      })
+    },1000)
+    return()=>clearInterval(ref.current)
+  },[phase,breakMin,workMin])
+  const start=()=>{setSecs(workMin*60);setTotal(workMin*60);setPhase('work')}
+  const stop=()=>{clearInterval(ref.current);setPhase('idle');setSecs(workMin*60);setTotal(workMin*60)}
+  const mm=String(Math.floor(secs/60)).padStart(2,'0')
+  const ss2=String(secs%60).padStart(2,'0')
+  const pct=total>0?((total-secs)/total)*100:0
+  const clr=phase==='work'?t.accent:phase==='break'?t.green:t.muted
+  const r=38,circ=2*Math.PI*r
+  return(
+    <div style={{padding:'14px',background:t.modal,border:`1px solid ${t.border}`,borderRadius:14,minWidth:210,animation:'dropIn .2s ease'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <span style={{fontSize:13,fontWeight:600,color:t.txt}}>⏱ Focus Timer</span>
+        <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',display:'flex',padding:2}}>{Ic.x}</button>
+      </div>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:12}}>
+        <div style={{position:'relative',width:96,height:96}}>
+          <svg width="96" height="96" style={{transform:'rotate(-90deg)'}}>
+            <circle cx="48" cy="48" r={r} fill="none" stroke={t.btn} strokeWidth="6"/>
+            <circle cx="48" cy="48" r={r} fill="none" stroke={clr} strokeWidth="6" strokeLinecap="round"
+              strokeDasharray={circ} strokeDashoffset={circ-circ*(pct/100)} style={{transition:'stroke-dashoffset .9s linear'}}/>
+          </svg>
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+            <div style={{fontSize:19,fontWeight:700,color:t.txt,letterSpacing:1}}>{mm}:{ss2}</div>
+            <div style={{fontSize:10,color:clr,fontWeight:600}}>{phase==='work'?'Fokus':phase==='break'?'Pauza':'Připraven'}</div>
+          </div>
+        </div>
+      </div>
+      {phase==='idle'&&(
+        <div style={{display:'flex',gap:10,marginBottom:10,justifyContent:'center'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:10,color:t.muted,marginBottom:3}}>Fokus (min)</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <button onClick={()=>setWorkMin(m=>Math.max(1,m-5))} style={{padding:'2px 6px',borderRadius:5,background:t.btn,color:t.txt,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',fontSize:12}}>-</button>
+              <span style={{fontSize:13,fontWeight:600,color:t.txt,minWidth:22,textAlign:'center'}}>{workMin}</span>
+              <button onClick={()=>setWorkMin(m=>Math.min(90,m+5))} style={{padding:'2px 6px',borderRadius:5,background:t.btn,color:t.txt,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',fontSize:12}}>+</button>
+            </div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:10,color:t.muted,marginBottom:3}}>Pauza (min)</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <button onClick={()=>setBreakMin(m=>Math.max(1,m-1))} style={{padding:'2px 6px',borderRadius:5,background:t.btn,color:t.txt,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',fontSize:12}}>-</button>
+              <span style={{fontSize:13,fontWeight:600,color:t.txt,minWidth:22,textAlign:'center'}}>{breakMin}</span>
+              <button onClick={()=>setBreakMin(m=>Math.min(30,m+1))} style={{padding:'2px 6px',borderRadius:5,background:t.btn,color:t.txt,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit',fontSize:12}}>+</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {sessions>0&&<div style={{fontSize:11,color:t.muted,textAlign:'center',marginBottom:8}}>✅ {sessions} session{sessions>1?'y':''} hotovo</div>}
+      {phase==='idle'
+        ?<button onClick={start} style={{width:'100%',padding:'8px',borderRadius:9,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>▶ Start</button>
+        :<button onClick={stop} style={{width:'100%',padding:'8px',borderRadius:9,background:t.danger,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>⏹ Stop</button>}
+    </div>
+  )
+}
+
+// ── Prompt záložky ────────────────────────────────────────────────────────────
+const BMARKS_KEY='lumi_bookmarks'
+function PromptBookmarks({t,input,onSelect}){
+  const[marks,setMarks]=useState(()=>{try{return JSON.parse(localStorage.getItem(BMARKS_KEY)||'[]')}catch{return[]}})
+  const[editMode,setEditMode]=useState(false),[lbl,setLbl]=useState('')
+  const save=m=>{try{localStorage.setItem(BMARKS_KEY,JSON.stringify(m))}catch{}}
+  const add=()=>{if(!input.trim())return;const label=lbl.trim()||input.trim().slice(0,30)+(input.length>30?'…':'');const next=[{id:uid(),label,text:input.trim()},...marks].slice(0,20);setMarks(next);save(next);setLbl('')}
+  const del=id=>{const next=marks.filter(m=>m.id!==id);setMarks(next);save(next)}
+  return(
+    <div style={{marginBottom:7,animation:'dropIn .2s ease'}}>
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,flexWrap:'wrap'}}>
+        <span style={{fontSize:11,color:t.muted,fontWeight:600}}>🔖 Záložky</span>
+        <button onClick={()=>setEditMode(e=>!e)} style={{fontSize:10,color:t.muted,background:editMode?t.active:t.btn,border:`1px solid ${t.border}`,cursor:'pointer',padding:'2px 7px',borderRadius:4,fontFamily:'inherit'}}>{editMode?'Hotovo':'Spravovat'}</button>
+        {input.trim()&&<div style={{display:'flex',gap:4,flex:1,minWidth:110}}>
+          <input value={lbl} onChange={e=>setLbl(e.target.value)} placeholder="Název…" style={{flex:1,fontSize:11,padding:'3px 7px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:5,outline:'none',fontFamily:'inherit'}}/>
+          <button onClick={add} style={{padding:'3px 8px',borderRadius:5,background:t.accent,color:'#fff',fontSize:11,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>+ Uložit</button>
+        </div>}
+      </div>
+      {marks.length===0&&<div style={{fontSize:11,color:t.muted,textAlign:'center',padding:'4px 0'}}>Žádné záložky. Napiš prompt → Uložit.</div>}
+      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+        {marks.map(m=>(
+          <div key={m.id} style={{display:'flex',alignItems:'center',borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,overflow:'hidden',transition:'border-color .15s'}} onMouseOver={e=>e.currentTarget.style.borderColor=t.accent} onMouseOut={e=>e.currentTarget.style.borderColor=t.border}>
+            <button onClick={()=>onSelect(m.text)} style={{padding:'3px 9px',background:'transparent',color:t.txt,fontSize:11,border:'none',cursor:'pointer',fontFamily:'inherit',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={m.text}>🔖 {m.label}</button>
+            {editMode&&<button onClick={()=>del(m.id)} style={{padding:'3px 6px',background:'rgba(239,68,68,.15)',color:'#f87171',fontSize:10,border:'none',borderLeft:`1px solid ${t.border}`,cursor:'pointer'}}>✕</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Image Style Presets ───────────────────────────────────────────────────────
+const IMG_STYLES=[
+  {l:'📸 Realistic',v:'photorealistic, 8k, sharp, detailed'},
+  {l:'🎌 Anime',v:'anime style, vibrant, studio ghibli'},
+  {l:'🎬 Cinematic',v:'cinematic, dramatic lighting, movie still'},
+  {l:'🖼️ Oil Paint',v:'oil painting, impressionist, textured'},
+  {l:'🌆 Cyberpunk',v:'cyberpunk, neon lights, rain, futuristic'},
+  {l:'🧸 Cartoon',v:'cartoon, bold outlines, flat colors'},
+]
+function ImageStylePresets({t,onSelect}){
+  return(
+    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7,animation:'fadeIn .3s ease'}}>
+      {IMG_STYLES.map(s=>(
+        <button key={s.l} onClick={()=>onSelect(s.v)} style={{padding:'3px 9px',borderRadius:20,background:t.tag,border:`1px solid ${t.border}`,color:t.muted,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}} onMouseOver={e=>{e.currentTarget.style.borderColor=t.purple;e.currentTarget.style.color=t.txt;e.currentTarget.style.background=t.purple+'22'}} onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.background=t.tag}}>{s.l}</button>
+      ))}
+    </div>
+  )
+}
+
+// ── Šablony ───────────────────────────────────────────────────────────────────
+const TEMPLATES=[
+  {icon:'📧',label:'Formální email',text:'Napiš formální email na téma: '},
+  {icon:'📝',label:'Shrnutí textu',text:'Shrň stručně a jasně: '},
+  {icon:'💼',label:'Meeting notes',text:'Napiš zprávu z meetingu. Témata: '},
+  {icon:'🐛',label:'Bug report',text:'Napiš bug report: Problém: '},
+  {icon:'📣',label:'Social post',text:'Napiš poutavý příspěvek o: '},
+  {icon:'📖',label:'Vysvětli jednoduše',text:'Vysvětli mi jednoduše (jako 10letému): '},
+  {icon:'⚡',label:'Bullet pointy',text:'Přepiš do přehledných bullet pointů: '},
+  {icon:'🔍',label:'Analýza',text:'Analyzuj silné a slabé stránky: '},
+]
+
+// ── Kalkulačka ────────────────────────────────────────────────────────────────
+function CalcWidget({t,onResult}){
+  const[expr,setExpr]=useState(''),[res,setRes]=useState(''),[err,setErr]=useState(false)
+  const calc=()=>{try{const c=expr.replace(/[^0-9+\-*/.()%\s]/g,'');if(!c.trim())return;const r=new Function(`"use strict";return(${c})`)();setRes(String(r));setErr(false)}catch{setRes('Chyba');setErr(true)}}
+  return(
+    <div style={{padding:'9px 11px',background:t.tag,borderRadius:9,border:`1px solid ${t.border}`,marginBottom:7}}>
+      <div style={{fontSize:10,color:t.muted,marginBottom:5}}>🔢 Kalkulačka</div>
+      <div style={{display:'flex',gap:5}}>
+        <input value={expr} onChange={e=>setExpr(e.target.value)} onKeyDown={e=>e.key==='Enter'&&calc()} placeholder="2 + 2 * 10 …" style={{flex:1,padding:'6px 9px',background:t.inBg,color:t.txt,border:`1px solid ${t.inBrd}`,borderRadius:6,fontSize:13,outline:'none',fontFamily:'monospace'}}/>
+        <button onClick={calc} style={{padding:'6px 11px',borderRadius:6,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>=</button>
+      </div>
+      {res&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:6,padding:'6px 10px',borderRadius:6,background:err?'rgba(239,68,68,.1)':t.success,border:`1px solid ${err?'#f87171':t.succ}`}}>
+        <span style={{fontSize:16,fontWeight:700,color:err?'#f87171':t.succ,fontFamily:'monospace'}}>{res}</span>
+        {!err&&<button onClick={()=>onResult(res)} style={{fontSize:10,color:t.accent,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Vložit →</button>}
+      </div>}
+    </div>
+  )
+}
+
+// ── Settings Modal ────────────────────────────────────────────────────────────
+function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLoggedIn,userId,memory,setMemory}){
+  const[tmp,setTmp]=useState(sysPmt),[tab,setTab]=useState('appearance'),[memList,setMemList]=useState([])
   useEffect(()=>{if(tab==='memory'&&isLoggedIn)supabase.from('user_memory').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(50).then(({data})=>setMemList(data||[]))},[tab,isLoggedIn,userId])
   const delMem=async id=>{await supabase.from('user_memory').delete().eq('id',id);setMemList(p=>p.filter(m=>m.id!==id))}
-  const delAll=async()=>{if(!isLoggedIn)return;await supabase.from('user_memory').delete().eq('user_id',userId);setMemList([])}
-  const save=()=>{setSysPmt(tmp);setAiModel(tmpAI);onClose()}
-  const tabs=[{id:'appearance',l:'Vzhled',e:'🎨'},{id:'model',l:'Model',e:'🤖'},{id:'behavior',l:'Chování',e:'⚙️'},{id:'memory',l:'Paměť',e:'🧠'},{id:'about',l:'O aplikaci',e:'ℹ️'}]
+  const tabs=[{id:'appearance',l:'Vzhled',e:'🎨'},{id:'behavior',l:'Chování',e:'⚙️'},{id:'memory',l:'Paměť',e:'🧠'},{id:'about',l:'O Lumi',e:'ℹ️'}]
   return(
     <>
       <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:49,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(580px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s cubic-bezier(.34,1.56,.64,1)'}}>
-        <div style={{padding:'18px 20px 0',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}><LumiAvatar size={32} gradient={[t.gradA,t.gradB]}/><h2 style={{fontSize:16,fontWeight:600,color:t.txt}}>Nastavení</h2></div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:t.muted,cursor:'pointer',fontSize:20,display:'flex',padding:4}}>{Ic.x}</button>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(560px,96vw)',maxHeight:'88vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s ease'}}>
+        <div style={{padding:'16px 18px 0',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:9}}><LumiAvatar size={30} gradient={[t.gradA,t.gradB]}/><h2 style={{fontSize:15,fontWeight:600,color:t.txt}}>Nastavení</h2></div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:t.muted,cursor:'pointer',display:'flex',padding:4}}>{Ic.x}</button>
         </div>
-        <div style={{display:'flex',gap:4,padding:'12px 20px 0',flexShrink:0,flexWrap:'wrap'}}>
-          {tabs.map(tb=>(
-            <button key={tb.id} onClick={()=>setTab(tb.id)} style={{padding:'6px 11px',borderRadius:8,background:tab===tb.id?t.accent:t.btn,color:tab===tb.id?'#fff':t.muted,fontSize:12,fontWeight:tab===tb.id?600:400,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
-              {tb.e} {tb.l}
-            </button>
-          ))}
+        <div style={{display:'flex',gap:4,padding:'10px 18px 0',flexShrink:0,flexWrap:'wrap'}}>
+          {tabs.map(tb=><button key={tb.id} onClick={()=>setTab(tb.id)} style={{padding:'5px 10px',borderRadius:7,background:tab===tb.id?t.accent:t.btn,color:tab===tb.id?'#fff':t.muted,fontSize:12,fontWeight:tab===tb.id?600:400,border:'none',cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>{tb.e} {tb.l}</button>)}
         </div>
-        <div style={{flex:1,overflowY:'auto',padding:'16px 20px 20px'}}>
+        <div style={{flex:1,overflowY:'auto',padding:'14px 18px 18px'}}>
           {tab==='appearance'&&(
             <>
-              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>12 barevných témat</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:7}}>
-                {THEME_LIST.map(th=>(
-                  <button key={th.id} onClick={()=>setThemeName(th.id)}
-                    style={{padding:'10px 6px',borderRadius:9,border:`2px solid ${themeName===th.id?t.accent:t.border}`,background:themeName===th.id?t.accent+'22':t.btn,color:themeName===th.id?t.accent:t.muted,fontSize:11,fontWeight:themeName===th.id?600:400,cursor:'pointer',fontFamily:'inherit',textAlign:'center',transition:'all .2s',transform:themeName===th.id?'scale(1.05)':'scale(1)'}}>
-                    <div style={{fontSize:18,marginBottom:3}}>{th.icon}</div>{th.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {tab==='model'&&(
-            <>
-              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>AI Model pro chat</div>
-              {AI_MODELS.map(m=>(
-                <button key={m.id} onClick={()=>setTmpAI(m.id)}
-                  style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${tmpAI===m.id?t.accent:t.border}`,background:tmpAI===m.id?t.accent+'18':t.btn,color:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',transition:'all .15s',marginBottom:8,display:'block'}}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                    <strong style={{color:tmpAI===m.id?t.accent:t.txt}}>{m.name}</strong>
-                    {tmpAI===m.id&&<span style={{color:t.accent}}>{Ic.check}</span>}
-                  </div>
-                  <div style={{fontSize:12,color:t.muted,marginTop:3}}>{m.desc}</div>
-                </button>
-              ))}
-              <div style={{padding:'12px 14px',borderRadius:10,background:`${t.green}15`,border:`1px solid ${t.green}44`,fontSize:12,color:t.txt,lineHeight:1.6}}>
-                🔍 <strong>Web Search</strong> používá SearXNG — open-source, zdarma, bez API klíče, celý internet + videa + obrázky.
+              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>Téma</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
+                {THEME_LIST.map(th=><button key={th.id} onClick={()=>setThemeName(th.id)} style={{padding:'9px 5px',borderRadius:8,border:`2px solid ${themeName===th.id?t.accent:t.border}`,background:themeName===th.id?t.accent+'22':t.btn,color:themeName===th.id?t.accent:t.muted,fontSize:10,fontWeight:themeName===th.id?600:400,cursor:'pointer',fontFamily:'inherit',textAlign:'center',transition:'all .2s',transform:themeName===th.id?'scale(1.05)':'scale(1)'}}>
+                  <div style={{fontSize:17,marginBottom:2}}>{th.icon}</div>{th.label}
+                </button>)}
               </div>
             </>
           )}
           {tab==='behavior'&&(
             <>
-              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>Osobnost</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:18}}>
-                {PERSONAS.map(p=>(
-                  <button key={p.label} onClick={()=>setTmp(p.val)}
-                    style={{padding:'10px 13px',borderRadius:9,border:`1.5px solid ${tmp===p.val?t.accent:t.border}`,background:tmp===p.val?t.accent+'18':t.btn,color:tmp===p.val?t.accent:t.txt,fontSize:13,textAlign:'left',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'all .15s'}}>
-                    {p.label}{tmp===p.val&&<span style={{color:t.accent}}>{Ic.check}</span>}
-                  </button>
-                ))}
+              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>Osobnost</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:14}}>
+                {PERSONAS.map(p=><button key={p.label} onClick={()=>setTmp(p.val)} style={{padding:'9px 12px',borderRadius:8,border:`1.5px solid ${tmp===p.val?t.accent:t.border}`,background:tmp===p.val?t.accent+'18':t.btn,color:tmp===p.val?t.accent:t.txt,fontSize:12,textAlign:'left',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'all .15s'}}>{p.label}{tmp===p.val&&<span style={{color:t.accent}}>{Ic.check}</span>}</button>)}
               </div>
-              <textarea value={tmp} onChange={e=>setTmp(e.target.value)} rows={3}
-                style={{width:'100%',padding:'10px 12px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:9,fontSize:13,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
-              <div style={{padding:'12px 14px',borderRadius:10,background:t.tag,border:`1px solid ${t.border}`}}>
-                <div style={{fontSize:12,fontWeight:600,color:t.txt,marginBottom:8}}>{Ic.brain} Epizodická paměť</div>
+              <textarea value={tmp} onChange={e=>setTmp(e.target.value)} rows={3} style={{width:'100%',padding:'9px 11px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:8,fontSize:12,lineHeight:1.6,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{padding:'11px 13px',borderRadius:9,background:t.tag,border:`1px solid ${t.border}`,marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:600,color:t.txt,marginBottom:7}}>{Ic.brain} Epizodická paměť</div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                   <span style={{fontSize:12,color:t.muted}}>Lumi si pamatuje kontext z minulých chatů</span>
-                  <button onClick={()=>setMemory(m=>!m)} style={{width:42,height:24,borderRadius:12,background:memory?t.accent:t.btn,border:`1px solid ${memory?t.accent:t.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
-                    <span style={{position:'absolute',top:3,left:memory?20:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',display:'block'}}/>
+                  <button onClick={()=>setMemory(m=>!m)} style={{width:40,height:22,borderRadius:11,background:memory?t.accent:t.btn,border:`1px solid ${memory?t.accent:t.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
+                    <span style={{position:'absolute',top:2,left:memory?19:2,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',display:'block'}}/>
                   </button>
                 </div>
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button onClick={onClose} style={{padding:'7px 14px',borderRadius:8,background:t.btn,color:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
+                <button onClick={()=>{setSysPmt(tmp);onClose()}} style={{padding:'7px 14px',borderRadius:8,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Uložit</button>
               </div>
             </>
           )}
           {tab==='memory'&&(
             <>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em'}}>Paměť {memList.length>0&&`(${memList.length})`}</div>
-                <div style={{display:'flex',gap:6}}>
-                  <button onClick={()=>{onAddMemory();onClose()}} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:7,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
-                    {Ic.addMem} Přidat
-                  </button>
-                  {memList.length>0&&<button onClick={delAll} style={{fontSize:12,color:t.danger,cursor:'pointer',background:'none',border:'none',fontFamily:'inherit',padding:'5px 8px'}}>Smazat vše</button>}
-                </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em'}}>Paměť ({memList.length})</div>
+                {memList.length>0&&<button onClick={async()=>{await supabase.from('user_memory').delete().eq('user_id',userId);setMemList([])}} style={{fontSize:11,color:t.danger,cursor:'pointer',background:'none',border:'none',fontFamily:'inherit'}}>Smazat vše</button>}
               </div>
-              {!isLoggedIn&&<p style={{fontSize:13,color:t.muted}}>Přihlaste se.</p>}
-              {isLoggedIn&&memList.length===0&&<div style={{textAlign:'center',padding:'24px 0',color:t.muted}}><div style={{fontSize:32,marginBottom:8}}>🧠</div>Paměť je prázdná.</div>}
+              {!isLoggedIn&&<p style={{fontSize:12,color:t.muted}}>Přihlaste se.</p>}
+              {isLoggedIn&&memList.length===0&&<div style={{textAlign:'center',padding:'20px 0',color:t.muted}}><div style={{fontSize:28,marginBottom:6}}>🧠</div>Paměť je prázdná.</div>}
               {memList.map(m=>(
-                <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'9px 12px',borderRadius:9,background:t.tag,border:`1px solid ${t.border}`,marginBottom:7}}>
-                  <span style={{fontSize:10,color:t.muted,background:t.btn,padding:'2px 6px',borderRadius:4,flexShrink:0,marginTop:1}}>{MEM_CATEGORIES.find(c=>c.id===m.category)?.label||m.category}</span>
-                  {m.source==='manual'&&<span style={{fontSize:9,color:t.accent,background:t.accent+'22',padding:'1px 5px',borderRadius:3,flexShrink:0,marginTop:1}}>ručně</span>}
-                  <span style={{fontSize:13,color:t.txt,flex:1,lineHeight:1.4}}>{m.content}</span>
+                <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:7,padding:'8px 11px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,marginBottom:6}}>
+                  <span style={{fontSize:9,color:t.muted,background:t.btn,padding:'1px 5px',borderRadius:3,flexShrink:0,marginTop:1}}>{MEM_CATEGORIES.find(c=>c.id===m.category)?.label||m.category}</span>
+                  {m.source==='auto'&&<span style={{fontSize:9,color:t.green,background:t.green+'22',padding:'1px 5px',borderRadius:3,flexShrink:0,marginTop:1}}>auto 🤖</span>}
+                  <span style={{fontSize:12,color:t.txt,flex:1,lineHeight:1.4}}>{m.content}</span>
                   <button onClick={()=>delMem(m.id)} style={{color:t.muted,display:'flex',padding:3,flexShrink:0,background:'none',border:'none',cursor:'pointer'}}>{Ic.trash}</button>
                 </div>
               ))}
             </>
           )}
           {tab==='about'&&(
-            <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,marginBottom:20}}>
-                <LumiAvatar size={56} gradient={[t.gradA,t.gradB]}/>
-                <div style={{textAlign:'center'}}>
-                  <div style={{fontWeight:700,color:t.txt,fontSize:18}}>Lumi</div>
-                  <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'2px 10px',borderRadius:4,fontWeight:600,fontSize:12}}>BETA</span>
-                </div>
+            <div style={{fontSize:12,color:t.muted,lineHeight:1.7}}>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:7,marginBottom:18}}>
+                <LumiAvatar size={52} gradient={[t.gradA,t.gradB]}/>
+                <div style={{textAlign:'center'}}><div style={{fontWeight:700,color:t.txt,fontSize:17}}>Lumi</div><span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 8px',borderRadius:4,fontWeight:600,fontSize:11}}>BETA</span></div>
               </div>
-              {[['🤖 Chat','Gemma 3 27B (výchozí)'],['💭 Deep Thinking','Gemini 2.5 Flash/Pro'],['🌐 Web Search','SearXNG (open-source, zdarma)'],['🎬 Videa','SearXNG Videos'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash API'],['🎙️ Hlas','Web Speech API'],['🧠 Paměť','Supabase PostgreSQL'],['📝 Drafty','Supabase (auto-save)'],['🔒 Auth','Supabase Auth']].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',borderRadius:8,background:t.tag,border:`1px solid ${t.border}`,marginBottom:6}}>
-                  <span>{k}</span><span style={{color:t.accent,fontSize:12}}>{v}</span>
+              {[['🤖 Chat','Gemma 4 31B (výchozí)'],['💭 Deep Thinking','Gemini 3.1 Flash Lite / 2.5 Pro'],['🌐 Web Search','Google Search (Gemini Grounding)'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash / Pixabay'],['🌤️ Počasí','OpenMeteo (zdarma, bez API)'],['🎙️ Live','Gemini 3 Flash Live / 2.5 Native Audio'],['🧠 Auto-paměť','Detekce + Supabase PostgreSQL'],['📝 Drafty','Supabase auto-save'],['⏱ Focus Timer','Pomodoro vestavěný']].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'7px 11px',borderRadius:7,background:t.tag,border:`1px solid ${t.border}`,marginBottom:5}}>
+                  <span>{k}</span><span style={{color:t.accent,fontSize:11}}>{v}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
-        {(tab==='appearance'||tab==='behavior'||tab==='model')&&(
-          <div style={{padding:'0 20px 20px',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
-            <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,background:t.btn,color:t.txt,fontSize:13,fontWeight:500,cursor:'pointer',border:'none',fontFamily:'inherit'}}>Zrušit</button>
-            <button onClick={save} style={{padding:'8px 16px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',border:'none',fontFamily:'inherit'}}>Uložit</button>
-          </div>
-        )}
       </div>
     </>
   )
 }
 
-// ── MAIN CHAT ──────────────────────────────────────────────────────────────────
+// ── AddMemoryModal ────────────────────────────────────────────────────────────
+function AddMemoryModal({t,onClose,onSave}){
+  const[content,setContent]=useState(''),[cat,setCat]=useState('personal')
+  return(
+    <>
+      <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:58,backdropFilter:'blur(4px)'}}/>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:59,width:'min(400px,96vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:14,padding:20,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .25s ease'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <h3 style={{fontSize:14,fontWeight:600,color:t.txt}}>➕ Přidat do paměti</h3>
+          <button onClick={onClose} style={{color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+        </div>
+        <textarea value={content} onChange={e=>setContent(e.target.value)} rows={3} placeholder="Např. Jmenuji se Radek, studuji programování…" style={{width:'100%',padding:'9px 11px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.inBrd}`,borderRadius:8,fontSize:12,lineHeight:1.6,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box',marginBottom:10}}/>
+        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:14}}>
+          {MEM_CATEGORIES.map(c=><button key={c.id} onClick={()=>setCat(c.id)} style={{padding:'4px 9px',borderRadius:5,background:cat===c.id?t.accent:t.btn,color:cat===c.id?'#fff':t.muted,fontSize:11,border:`1px solid ${cat===c.id?t.accent:t.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',fontWeight:cat===c.id?600:400}}>{c.label}</button>)}
+        </div>
+        <div style={{display:'flex',gap:7,justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{padding:'7px 14px',borderRadius:7,background:t.btn,color:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
+          <button onClick={()=>{if(content.trim()){onSave(content.trim(),cat);onClose()}}} disabled={!content.trim()} style={{padding:'7px 14px',borderRadius:7,background:content.trim()?t.accent:t.btn,color:content.trim()?'#fff':t.muted,fontSize:12,fontWeight:600,border:'none',cursor:content.trim()?'pointer':'default',fontFamily:'inherit',transition:'all .15s'}}>Uložit</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── MAIN CHAT ─────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 export default function Chat({session}){
-  const[themeName,setThemeName]   =useState(()=>localStorage.getItem('theme')||'dark')
-  const[showAuth,setShowAuth]     =useState(false)
-  const[showSet,setShowSet]       =useState(false)
-  const[showLive,setShowLive]     =useState(false)
-  const[showAddMem,setShowAddMem] =useState(false)
-  const[showShort,setShowShort]   =useState(false)
-  const[cookies,setCookies]       =useState(()=>localStorage.getItem('lumi_cookies')==='1')
-  const[sysPmt,setSysPmt]         =useState(()=>localStorage.getItem('syspmt')||SYS_DEFAULT)
-  const[aiModel,setAiModel]       =useState(()=>localStorage.getItem('aiModel')||'default')
-  const[imgMode,setImgMode]       =useState('chat')
-  const[imgModel,setImgModel]     =useState(IMG_MODELS[0].id)
+  const[themeName,setThemeName]=useState(()=>localStorage.getItem('lumi_theme')||'dark')
+  const[showAuth,setShowAuth]=useState(false)
+  const[showSet,setShowSet]=useState(false)
+  const[showLive,setShowLive]=useState(false)
+  const[showAddMem,setShowAddMem]=useState(false)
+  const[cookies,setCookies]=useState(()=>localStorage.getItem('lumi_cookies')==='1')
+  const[sysPmt,setSysPmt]=useState(()=>localStorage.getItem('lumi_sys')||SYS_DEFAULT)
+  const[aiModel,setAiModel]=useState(()=>localStorage.getItem('lumi_model')||'default')
+  // Modes
+  const[imgMode,setImgMode]=useState('chat')
+  const[imgModel,setImgModel]=useState(IMG_MODELS[0].id)
   const[webSearchType,setWebSearchType]=useState('web')
-  const[thinking,setThinking]     =useState(false)
-  const[memory,setMemory]         =useState(true)
-  const[mdMode,setMdMode]         =useState(true)
-  const[showMdBar,setShowMdBar]   =useState(false)
-  const[sideOpen,setSideOpen]     =useState(()=>typeof window!=='undefined'&&window.innerWidth>768)
-  const[input,setInput]           =useState('')
-  const[atts,setAtts]             =useState([])
-  const[loading,setLoading]       =useState(false)
-  const[err,setErr]               =useState(null)
-  const[convs,setConvs]           =useState([mkLocal()])
-  const[activeId,setActiveId]     =useState(null)
-  const[msgs,setMsgs]             =useState([])
-  const[dbLoad,setDbLoad]         =useState(false)
-  const[searchOpen,setSearchOpen] =useState(false)
-  const[searchQ,setSearchQ]       =useState('')
-  const[searchRes,setSearchRes]   =useState([])
-  const[editId,setEditId]         =useState(null)
-  const[editTitle,setEditTitle]   =useState('')
-  const[quizMode,setQuizMode]     =useState(false)
-  const[quizTopic,setQuizTopic]   =useState('')
-  const[quizCount,setQuizCount]   =useState(5)
-  const[quizDiff,setQuizDiff]     =useState('medium')
-  const[explainTxt,setExplainTxt] =useState(null)
-  const[token,setToken]           =useState(null)
-  const[starred,setStarred]       =useState(new Set())
-  const[pinnedMsgs,setPinnedMsgs] =useState(new Set())
-  const[showStarred,setShowStarred]=useState(false)
-  const[newIds,setNewIds]         =useState(new Set())
-  const[typingIds,setTypingIds]   =useState(new Set())
-  const[userMsgCnt,setUserMsgCnt] =useState(0)
-  const[selTxt,setSelTxt]         =useState('')
-  const[selPos,setSelPos]         =useState(null)
-  const[pollenInfo,setPollenInfo] =useState(()=>({remaining:POLLEN_LIMIT,...getPollenCache()}))
-  const[wordCount,setWordCount]   =useState(0)
-  const[isDragging,setIsDragging] =useState(false)
-  const[reactions,setReactions]   =useState({})
-  const draftTimerRef             =useRef(null)
-  // Nová věc #4: Show image style presets
+  const[thinking,setThinking]=useState(false)
+  const[memory,setMemory]=useState(true)
+  const[mdMode,setMdMode]=useState(true)
+  // UI toggles
+  const[sideOpen,setSideOpen]=useState(()=>typeof window!=='undefined'&&window.innerWidth>768)
+  const[input,setInput]=useState('')
+  const[atts,setAtts]=useState([])
+  const[loading,setLoading]=useState(false)
+  const[err,setErr]=useState(null)
   const[showImgStyles,setShowImgStyles]=useState(false)
-  // Nová věc #5: Last user msg for retry
-  const[lastUserMsg,setLastUserMsg]=useState(null)
-  // Nová věc #1: Smart suggestions — poslední AI zpráva pro suggestions
-  const[lastAiMsg,setLastAiMsg]   =useState('')
-  // 5 nových funkcí
-  const[showWeather,setShowWeather]   =useState(false)   // počasí input
-  const[showTemplates,setShowTemplates]=useState(false)  // šablony
-  const[showCalc,setShowCalc]         =useState(false)   // kalkulačka
-  const[responseLang,setResponseLang] =useState('Czech') // jazyk odpovědí
-  const[showLangPicker,setShowLangPicker]=useState(false)// přepínač jazyka
-  const[showBookmarks,setShowBookmarks]=useState(false)  // Záložky promptů
+  const[showTemplates,setShowTemplates]=useState(false)
+  const[showCalc,setShowCalc]=useState(false)
+  const[showBookmarks,setShowBookmarks]=useState(false)
+  const[showFocusTimer,setShowFocusTimer]=useState(false)
+  const[isDragging,setIsDragging]=useState(false)
+  // Conversations
+  const[convs,setConvs]=useState([mkLocal()])
+  const[activeId,setActiveId]=useState(null)
+  const[msgs,setMsgs]=useState([])
+  const[dbLoad,setDbLoad]=useState(false)
+  const[searchQ,setSearchQ]=useState(''),[searchOpen,setSearchOpen]=useState(false),[searchRes,setSearchRes]=useState([])
+  const[editId,setEditId]=useState(null),[editTitle,setEditTitle]=useState('')
+  // Quiz
+  const[quizMode,setQuizMode]=useState(false)
+  const[quizTopic,setQuizTopic]=useState('')
+  const[quizCount,setQuizCount]=useState(5)
+  const[quizDiff,setQuizDiff]=useState('medium')
+  // Misc
+  const[explainTxt,setExplainTxt]=useState(null)
+  const[token,setToken]=useState(null)
+  const[starred,setStarred]=useState(new Set())
+  const[pinnedMsgs,setPinnedMsgs]=useState(new Set())
+  const[showStarred,setShowStarred]=useState(false)
+  const[newIds,setNewIds]=useState(new Set())
+  const[typingIds,setTypingIds]=useState(new Set())
+  const[wordCount,setWordCount]=useState(0)
+  const[pollenInfo,setPollenInfo]=useState(()=>({remaining:POLLEN_LIMIT,...getPollenCache()}))
+  const[autoMemToast,setAutoMemToast]=useState('')
+  // Persistence přes session: počasí a search přežijí refresh
+  const[lastWeather]=useState(()=>{try{const d=sessionStorage.getItem('lumi_weather');return d?JSON.parse(d):null}catch{return null}})
+  const draftTimerRef=useRef(null)
 
   const endRef=useRef(null),fileRef=useRef(null),taRef=useRef(null),searchRef=useRef(null)
   const t=THEMES[themeName]||THEMES.dark
   const isLoggedIn=!!session
   const activeConv=useMemo(()=>convs.find(c=>c.id===activeId)??convs[0]??null,[convs,activeId])
 
-  useEffect(()=>{localStorage.setItem('theme',themeName)},[themeName])
-  useEffect(()=>{localStorage.setItem('syspmt',sysPmt)},[sysPmt])
-  useEffect(()=>{localStorage.setItem('aiModel',aiModel)},[aiModel])
+  // Persist settings
+  useEffect(()=>{localStorage.setItem('lumi_theme',themeName)},[themeName])
+  useEffect(()=>{localStorage.setItem('lumi_sys',sysPmt)},[sysPmt])
+  useEffect(()=>{localStorage.setItem('lumi_model',aiModel)},[aiModel])
 
+  // Init
   useEffect(()=>{
     if(isLoggedIn){getFreshToken().then(setToken);loadConvs()}
     else{const c=mkLocal();setConvs([c]);setActiveId(c.id);setMsgs([])}
   },[isLoggedIn]) // eslint-disable-line
 
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'})},[msgs.length,activeConv?.messages?.length,loading])
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'})},[msgs.length,loading])
   useEffect(()=>{setWordCount(input.trim()?input.trim().split(/\s+/).filter(Boolean).length:0)},[input])
 
+  // Draft autosave
   useEffect(()=>{
     if(!isLoggedIn||!activeId||activeConv?.local)return
     if(draftTimerRef.current)clearTimeout(draftTimerRef.current)
-    draftTimerRef.current=setTimeout(async()=>{
-      try{await callEdge('save_draft',{conv_id:activeId,draft:input},token||ANON)}catch{}
-    },2000)
+    draftTimerRef.current=setTimeout(async()=>{try{await callEdge('save_draft',{conv_id:activeId,draft:input},token||ANON)}catch{}},2000)
     return()=>{if(draftTimerRef.current)clearTimeout(draftTimerRef.current)}
   },[input,activeId]) // eslint-disable-line
 
+  // Load draft on conv switch
   useEffect(()=>{
     if(!isLoggedIn||!activeId||activeConv?.local)return
     if(draftTimerRef.current){clearTimeout(draftTimerRef.current);draftTimerRef.current=null}
     setInput('')
     callEdge('load_draft',{conv_id:activeId},token||ANON).then(d=>{if(d.draft)setInput(d.draft)}).catch(()=>{})
-    if(token){callEdge('get_pollen_status',{imgModel},token).then(ps=>{if(ps?.remaining!==undefined){setPollenInfo(ps);setPollenCache(ps)}}).catch(()=>{})}
+    if(token)callEdge('get_pollen_status',{imgModel},token).then(ps=>{if(ps?.remaining!==undefined){setPollenInfo(ps);setPollenCache(ps)}}).catch(()=>{})
   },[activeId]) // eslint-disable-line
 
-  useEffect(()=>{
-    const h=()=>{
-      const sel=window.getSelection(),txt=sel?.toString().trim()||''
-      if(txt.length>5&&txt.length<300){setSelTxt(txt);try{const rect=sel.getRangeAt(0).getBoundingClientRect();setSelPos({x:rect.left+rect.width/2,y:rect.top-10})}catch{}}
-      else{setSelTxt('');setSelPos(null)}
-    }
-    document.addEventListener('mouseup',h);return()=>document.removeEventListener('mouseup',h)
-  },[])
-
-  useEffect(()=>{
-    const h=e=>{
-      const isMod=e.ctrlKey||e.metaKey
-      if(isMod){
-        if(e.key==='k'){e.preventDefault();newConv()}
-        if(e.key==='/'){e.preventDefault();setShowShort(s=>!s)}
-        if(e.key==='e'){e.preventDefault();exportChat()}
-        if(e.key==='b'&&document.activeElement===taRef.current){
-          e.preventDefault()
-          const ta=taRef.current,s=ta.selectionStart,en=ta.selectionEnd
-          if(s!==en){const sel=input.slice(s,en);setInput(input.slice(0,s)+'**'+sel+'**'+input.slice(en))}
-        }
-      }
-      if(e.key==='Escape'){setShowShort(false);setExplainTxt(null);setSelTxt('');setSelPos(null)}
-    }
-    window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)
-  },[input]) // eslint-disable-line
-
+  // Drag & drop
   useEffect(()=>{
     const el=document.getElementById('lumi-main');if(!el)return
     const onDO=e=>{e.preventDefault();setIsDragging(true)}
@@ -1037,22 +709,41 @@ export default function Chat({session}){
     return()=>{el.removeEventListener('dragover',onDO);el.removeEventListener('dragleave',onDL);el.removeEventListener('drop',onDrop)}
   },[])
 
+  // Keyboard shortcuts
+  useEffect(()=>{
+    const h=e=>{
+      const isMod=e.ctrlKey||e.metaKey
+      if(isMod){
+        if(e.key==='k'){e.preventDefault();newConv()}
+        if(e.key==='e'){e.preventDefault();exportChat()}
+        if(e.key==='b'&&document.activeElement===taRef.current){
+          e.preventDefault()
+          const ta=taRef.current,s=ta.selectionStart,en=ta.selectionEnd
+          if(s!==en){const sel=input.slice(s,en);setInput(input.slice(0,s)+'**'+sel+'**'+input.slice(en))}
+        }
+      }
+      if(e.key==='Escape'){setExplainTxt(null);setShowFocusTimer(false)}
+    }
+    window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)
+  },[input]) // eslint-disable-line
+
+  // ── DB ────────────────────────────────────────────────────────────────────
   async function loadConvs(){
     setDbLoad(true)
-    const{data}=await supabase.from('conversations').select('*').order('updated_at',{ascending:false})
+    const{data}=await supabase.from('conversations').select('id,title,updated_at,color').order('updated_at',{ascending:false}).limit(50)
     if(data?.length>0){setConvs(data.map(c=>({...c,local:false})));setActiveId(data[0].id);await loadMsgs(data[0].id)}
     else{const c=await createConv();if(c){setConvs([{...c,local:false}]);setActiveId(c.id);setMsgs([])}}
     setDbLoad(false)
   }
   async function loadMsgs(cid){
-    const{data}=await supabase.from('messages').select('*').eq('conversation_id',cid).order('created_at',{ascending:true})
-    setMsgs(data??[]);setStarred(new Set((data??[]).filter(m=>m.starred).map(m=>m.id)));setPinnedMsgs(new Set((data??[]).filter(m=>m.pinned).map(m=>m.id)));setUserMsgCnt((data??[]).filter(m=>m.role==='user').length)
+    const{data}=await supabase.from('messages').select('id,role,content,type,image_url,created_at,starred,pinned').eq('conversation_id',cid).order('created_at',{ascending:true}).limit(200)
+    setMsgs(data??[]);setStarred(new Set((data??[]).filter(m=>m.starred).map(m=>m.id)));setPinnedMsgs(new Set((data??[]).filter(m=>m.pinned).map(m=>m.id)))
   }
-  async function createConv(title='Nová konverzace'){const{data}=await supabase.from('conversations').insert({user_id:session.user.id,title}).select().single();return data}
-  async function saveMsg(cid,role,content,type='text',meta=null){const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url:meta?JSON.stringify(meta):null}).select().single();return data}
+  async function createConv(title='Nová konverzace'){const{data}=await supabase.from('conversations').insert({user_id:session.user.id,title}).select('id,title,updated_at,color').single();return data}
+  async function saveMsg(cid,role,content,type='text',meta=null){const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url:meta?JSON.stringify(meta):null}).select('id').single();return data}
   async function newConv(){
     setErr(null);setInput('');setAtts([])
-    if(isLoggedIn){const c=await createConv();if(c){setConvs(p=>[{...c,local:false},...p]);setActiveId(c.id);setMsgs([]);setUserMsgCnt(0)}}
+    if(isLoggedIn){const c=await createConv();if(c){setConvs(p=>[{...c,local:false},...p]);setActiveId(c.id);setMsgs([])}}
     else{const c=mkLocal();setConvs(p=>[c,...p]);setActiveId(c.id)}
     if(typeof window!=='undefined'&&window.innerWidth<=768)setSideOpen(false)
   }
@@ -1061,16 +752,10 @@ export default function Chat({session}){
     e.stopPropagation();if(isLoggedIn)await supabase.from('conversations').delete().eq('id',id)
     setConvs(prev=>{const next=prev.filter(c=>c.id!==id);const list=next.length>0?next:[mkLocal()];if(id===activeId){setActiveId(list[0].id);if(isLoggedIn&&next.length>0)loadMsgs(list[0].id);else setMsgs([])}return list})
   }
-  async function renameConv(id,title){
-    if(!title.trim())return;if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',id)
-    setConvs(p=>p.map(c=>c.id===id?{...c,title}:c));setEditId(null)
-  }
-  async function setConvColor(id,color){if(isLoggedIn)await supabase.from('conversations').update({color}).eq('id',id);setConvs(p=>p.map(c=>c.id===id?{...c,color}:c))}
-  async function autoTitle(cid,msg){
-    try{const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:msg}]}]},token||ANON);if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',cid);setConvs(p=>p.map(c=>c.id===cid?{...c,title:d.title}:c))}}catch{}
-  }
-  const starMsg=async msg=>{const ns=!starred.has(msg.id);setStarred(p=>{const n=new Set(p);ns?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn&&(msg.dbId||msg.id))await supabase.from('messages').update({starred:ns}).eq('id',msg.dbId||msg.id)}
-  const pinMsg=async msg=>{const np=!pinnedMsgs.has(msg.id);setPinnedMsgs(p=>{const n=new Set(p);np?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn&&(msg.dbId||msg.id))await supabase.from('messages').update({pinned:np}).eq('id',msg.dbId||msg.id)}
+  async function renameConv(id,title){if(!title.trim())return;if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',id);setConvs(p=>p.map(c=>c.id===id?{...c,title}:c));setEditId(null)}
+  async function autoTitle(cid,msg){try{const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:msg.slice(0,200)}]}]},token||ANON);if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',cid);setConvs(p=>p.map(c=>c.id===cid?{...c,title:d.title}:c))}}catch{}}
+  const starMsg=async msg=>{const ns=!starred.has(msg.id);setStarred(p=>{const n=new Set(p);ns?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn)await supabase.from('messages').update({starred:ns}).eq('id',msg.id)}
+  const pinMsg=async msg=>{const np=!pinnedMsgs.has(msg.id);setPinnedMsgs(p=>{const n=new Set(p);np?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn)await supabase.from('messages').update({pinned:np}).eq('id',msg.id)}
   const exportChat=()=>{
     const lines=displayMsgs.map(m=>`[${m.role==='user'?'Vy':'Lumi'}] ${fmtTime(m.created_at)}\n${m.content}\n`)
     const b=new Blob([`Chat: ${activeConv?.title}\n${new Date().toLocaleString('cs-CZ')}\n\n`+lines.join('\n---\n\n')],{type:'text/plain;charset=utf-8'})
@@ -1086,50 +771,22 @@ export default function Chat({session}){
     const res=await Promise.all(files.map(f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r({id:uid(),name:f.name,type:f.type,size:f.size,data:rd.result.split(',')[1],preview:f.type.startsWith('image/')?rd.result:null});rd.readAsDataURL(f)})))
     setAtts(p=>[...p,...res]);fileRef.current.value=''
   }
-  const addReaction=(msgId,emoji)=>{setReactions(prev=>{const cur=prev[msgId]||[];const ex=cur.find(r=>r.emoji===emoji);if(ex)return{...prev,[msgId]:cur.map(r=>r.emoji===emoji?{...r,count:r.count+1}:r)};return{...prev,[msgId]:[...cur,{emoji,count:1}]}})}
-  const addNewAnim=id=>{setNewIds(s=>{const n=new Set(s);n.add(id);setTimeout(()=>setNewIds(s2=>{const n2=new Set(s2);n2.delete(id);return n2}),800);return n})}
-  const saveMemory=async c=>{if(!isLoggedIn||!c)return;try{await callEdge('save_memory',{content:c.slice(0,500),category:'general',source:'auto'},token)}catch{}}
+  const addNewAnim=id=>{setNewIds(s=>{const n=new Set(s);n.add(id);setTimeout(()=>setNewIds(s2=>{const n2=new Set(s2);n2.delete(id);return n2}),700);return n})}
+
+  // Auto-paměť
+  const tryAutoMemory=useCallback(async(text)=>{
+    if(!isLoggedIn||!token)return
+    const m=detectMemoryInfo(text)
+    if(!m.save)return
+    try{await callEdge('save_memory',{content:m.content,category:m.category,source:'auto'},token);setAutoMemToast(`🧠 Zapamatováno: „${m.content.slice(0,35)}…"`);setTimeout(()=>setAutoMemToast(''),3000)}catch{}
+  },[isLoggedIn,token])
+
   const addMemoryManual=async(content,cat)=>{if(!isLoggedIn||!content)return;try{await callEdge('save_memory',{content,category:cat,source:'manual'},token)}catch{}}
-  const explainMsg=async msg=>{setExplainTxt('Načítám (Gemma 3 12B)…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}],language:'Czech'},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
-  // Věc #5: Retry — zopakuje poslední user zprávu
-  const retryLast=()=>{
-    const allMsgs=activeConv?.local?(activeConv.messages??[]):msgs
-    const lastUser=allMsgs.filter(m=>m.role==='user').at(-1)
-    if(lastUser&&lastUser.content){setInput(lastUser.content);setErr(null)}
-  }
+  const explainMsg=async msg=>{setExplainTxt('Načítám…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}]},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
+  const parsePollenErr=msg=>{if(msg.startsWith('POLLEN_LIMIT:')){const[,spent,,wait,cost,resetAt]=msg.split(':');return{type:'limit',spent:Number(spent),wait:Number(wait),cost:Number(cost),resetAt:resetAt||null}}; if(msg.startsWith('POLLEN_BALANCE:'))return{type:'balance',wait:Number(msg.split(':')[1])||30};return null}
 
-  // Počasí
-  const sendWeather=async(city)=>{
-    setShowWeather(false);setLoading(true);setErr(null)
-    const cid=activeConv?.id,isLocal=activeConv?.local
-    const tmpUser={id:uid(),role:'user',content:`🌤️ Počasí: ${city}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
-    if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
-    else setMsgs(p=>[...p,tmpUser])
-    try{
-      const tk=await getFreshToken()||ANON
-      const result=await callEdge('weather',{location:city},tk)
-      const nid=uid()
-      const aMsg={id:nid,role:'assistant',type:'weather',content:`🌤️ Počasí: ${result.weather?.city}`,_weatherData:result.weather,created_at:new Date().toISOString()}
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{await saveMsg(cid,'user',tmpUser.content,'text',null);await saveMsg(cid,'assistant',aMsg.content,'text',null);setMsgs(p=>[...p.filter(m=>!m._tmp),tmpUser,aMsg])}
-      addNewAnim(nid)
-    }catch(e){setErr('Počasí: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp))}
-    finally{setLoading(false)}
-  }
-
-  const visualizeSelection=async txt=>{
-    setSelTxt('');setSelPos(null)
-    if(!isLoggedIn){setErr('Pro generování obrázků se přihlaste.');return}
-    setInput(txt);setImgMode('generate_image')
-    setTimeout(()=>sendImg(txt),80)
-  }
-  const parsePollenError=msg=>{
-    if(msg.startsWith('POLLEN_LIMIT:')){const[,spent,,wait,cost,resetAt]=msg.split(':');return{type:'limit',spent:Number(spent),wait:Number(wait),cost:Number(cost),resetAt:resetAt||null}}
-    if(msg.startsWith('POLLEN_BALANCE:')){return{type:'balance',wait:Number(msg.split(':')[1])||30}}
-    return null
-  }
-
-  const sendImg=async(overrideText)=>{
+  // ── Send: Image ────────────────────────────────────────────────────────────
+  const sendImg=useCallback(async(overrideText)=>{
     const txt=(overrideText||input).trim();if(!txt)return
     if(!isLoggedIn){setErr('Pro generování obrázků se přihlaste.');return}
     setInput('');setLoading(true);setErr(null)
@@ -1144,22 +801,23 @@ export default function Chat({session}){
       const nid=uid()
       const aMsg={id:nid,role:'assistant',type:'generated_image',content:'🎨 Vygenerovaný obrázek',_imageData:result.imageData,_mimeType:result.mimeType,_prompt:result.prompt||txt,_modelId:imgModel,image_url:JSON.stringify({imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel}),created_at:new Date().toISOString()}
       if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{const uRow=await saveMsg(cid,'user',txt,'text',null);await saveMsg(cid,'assistant','🎨 Vygenerovaný obrázek','generated_image',{imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel});await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,dbId:uRow?.id},aMsg]);setUserMsgCnt(c=>c+1)}
+      else{const uRow=await saveMsg(cid,'user',txt);await saveMsg(cid,'assistant','🎨 Vygenerovaný obrázek','generated_image',{imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel});await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])}
       addNewAnim(nid)
     }catch(e){
-      const pe=parsePollenError(e.message)
-      if(pe?.type==='limit'){setPollenInfo(p=>({...p,remaining:0,resetAt:pe.resetAt}));setErr(`🌸 Pollen limit: ${pe.wait} min do resetu (90 min od posledního obrázku)`)}
-      else if(pe?.type==='balance'){setErr(`🌸 Pollinations nemá dost pollen. Zkus za ${pe.wait} min.`)}
-      else{setErr('Generování: '+e.message)}
+      const pe=parsePollenErr(e.message)
+      if(pe?.type==='limit'){setPollenInfo(p=>({...p,remaining:0,resetAt:pe.resetAt}));setErr(`🌸 Pollen limit: čekej ${pe.wait} min`)}
+      else if(pe?.type==='balance')setErr(`🌸 Pollinations bez pollen. Zkus za ${pe.wait} min.`)
+      else setErr('Generování: '+e.message)
       if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c))
       else setMsgs(p=>p.filter(m=>!m._tmp))
       setInput(txt)
     }
     finally{setLoading(false)}
-  }
+  },[input,isLoggedIn,activeConv,imgModel]) // eslint-disable-line
 
-  const sendWebSearch=async()=>{
-    const txt=input.trim();if(!txt)return
+  // ── Send: Web Search ───────────────────────────────────────────────────────
+  const sendWebSearch=useCallback(async(overrideInput)=>{
+    const txt=(overrideInput||input).trim();if(!txt)return
     if(!isLoggedIn){setErr('Pro web search se přihlaste.');return}
     setInput('');setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
@@ -1169,15 +827,40 @@ export default function Chat({session}){
     try{
       const tk=await getFreshToken()||ANON
       const result=await callEdge('web_search',{query:txt,searchType:webSearchType},tk)
+      // Persist to sessionStorage
+      try{sessionStorage.setItem('lumi_search',JSON.stringify(result))}catch{}
       const nid=uid()
       const aMsg={id:nid,role:'assistant',type:'web_search',content:`🌐 ${result.results?.length||0} výsledků`,_webData:result,created_at:new Date().toISOString()}
       if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{const uRow=await saveMsg(cid,'user',tmpUser.content,'text',null);await saveMsg(cid,'assistant',aMsg.content,'text',null);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,dbId:uRow?.id},aMsg]);setUserMsgCnt(c=>c+1)}
+      else{await saveMsg(cid,'user',tmpUser.content);await saveMsg(cid,'assistant',aMsg.content);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])}
       addNewAnim(nid)
     }catch(e){setErr('Web Search: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(txt)}
     finally{setLoading(false)}
-  }
+  },[input,isLoggedIn,activeConv,webSearchType]) // eslint-disable-line
 
+  // ── Send: Weather ──────────────────────────────────────────────────────────
+  const sendWeather=useCallback(async(city)=>{
+    if(!city?.trim())return
+    setLoading(true);setErr(null)
+    const cid=activeConv?.id,isLocal=activeConv?.local
+    const tmpUser={id:uid(),role:'user',content:`🌤️ Počasí: ${city}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
+    if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
+    else setMsgs(p=>[...p,tmpUser])
+    try{
+      const tk=await getFreshToken()||ANON
+      const result=await callEdge('weather',{location:city},tk)
+      // Persist weather
+      try{sessionStorage.setItem('lumi_weather',JSON.stringify(result.weather))}catch{}
+      const nid=uid()
+      const aMsg={id:nid,role:'assistant',type:'weather',content:`🌤️ ${result.weather?.city||city}`,_weatherData:result.weather,created_at:new Date().toISOString()}
+      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      else{await saveMsg(cid,'user',tmpUser.content);await saveMsg(cid,'assistant',aMsg.content);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])}
+      addNewAnim(nid)
+    }catch(e){setErr('Počasí: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp))}
+    finally{setLoading(false)}
+  },[activeConv]) // eslint-disable-line
+
+  // ── Send: Quiz ─────────────────────────────────────────────────────────────
   const sendQuiz=async()=>{
     if(!quizTopic.trim())return
     setLoading(true);setErr(null)
@@ -1186,50 +869,47 @@ export default function Chat({session}){
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmp]}))
     else setMsgs(p=>[...p,tmp])
     try{
-      const d=await callEdge('quiz',{topic:quizTopic,difficulty:quizDiff,questionCount:quizCount,language:'Czech'},token||ANON)
-      const qs=d.questions||[];if(!qs.length)throw new Error('Kvíz neobsahuje otázky.')
+      const d=await callEdge('quiz',{topic:quizTopic,difficulty:quizDiff,questionCount:quizCount},token||ANON)
+      const qs=d.questions||[];if(!qs.length)throw new Error('Kvíz nemá otázky.')
       const aMsg={id:uid(),role:'assistant',type:'quiz',content:'🎓 Kvíz',_quizData:qs,created_at:new Date().toISOString()}
       if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{await saveMsg(cid,'user',tmp.content,'text',null);await saveMsg(cid,'assistant','🎓 Kvíz','quiz',qs);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmp,_tmp:false},aMsg])}
+      else{await saveMsg(cid,'user',tmp.content);await saveMsg(cid,'assistant','🎓 Kvíz','quiz',qs);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmp,_tmp:false},aMsg])}
       addNewAnim(aMsg.id)
     }catch(e){setErr('Kvíz: '+e.message)}
     finally{setLoading(false);setQuizMode(false);setQuizTopic('')}
   }
 
+  // ── Main send ──────────────────────────────────────────────────────────────
   const send=useCallback(async()=>{
     if(imgMode==='generate_image'){sendImg();return}
     if(imgMode==='web_search'){sendWebSearch();return}
     if((!input.trim()&&!atts.length)||loading||!activeConv)return
-    const cid=activeConv.id,userText=input.trim()||atts.map(a=>a.name).join(', '),isLocal=activeConv.local
+    const userText=input.trim()||atts.map(a=>a.name).join(', ')
+    const cid=activeConv.id,isLocal=activeConv.local
 
-    // ── Smart Intent Detection ─────────────────────────────────────────────
+    // Auto-paměť
+    tryAutoMemory(userText)
+
+    // Smart intent detection — jen pokud je chat mode
     if(isLoggedIn&&imgMode==='chat'){
       const intent=detectIntent(userText)
-      // Obrázek
       if(intent==='generate_image'){setImgMode('generate_image');sendImg(userText);return}
-      // Web search
-      if(intent==='web_search'){setImgMode('web_search');setInput(userText);setTimeout(()=>sendWebSearch(),30);return}
-      // Foto
-      if(intent==='image_search'){setImgMode('image_search');setTimeout(()=>send(),30);return}
-      // Počasí — extrahuj město z textu
+      if(intent==='web_search'){sendWebSearch(userText);return}
+      if(intent==='image_search'){setImgMode('image_search');setInput(userText);setTimeout(()=>send(),30);return}
       if(intent==='weather'){
-        const cityMatch=userText.match(/počasí\s+(?:v\s+)?([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+(?:\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+)?)|weather\s+in\s+([A-Z][a-zA-Z]+)/i)
-        const city=cityMatch?.[1]||cityMatch?.[2]||'Praha'
-        setInput('');sendWeather(city);return
+        const cm=userText.match(/(?:počasí\s+(?:v\s+)?|weather\s+in\s+)([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+(?:\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+)?)/i)
+        setInput('');sendWeather(cm?.[1]||'Praha');return
       }
-      // Kvíz — extrahuj téma
       if(intent==='quiz'){
-        const topicMatch=userText.match(/kvíz\s+(?:na téma\s+|o\s+|ze?\s+)?(.+?)(?:\s*$)/i)||userText.match(/quiz\s+(?:about\s+)?(.+)/i)
-        const topic=topicMatch?.[1]?.trim()||userText.replace(/kvíz|quiz/gi,'').trim()||'Obecné znalosti'
-        setInput('');setQuizMode(true);setQuizTopic(topic.slice(0,60));return
+        const tm=userText.match(/(?:kvíz\s+(?:na\s+téma\s+|o\s+)?)(.+)/i)||userText.match(/quiz\s+(?:about\s+)?(.+)/i)
+        setInput('');setQuizMode(true);setQuizTopic((tm?.[1]?.trim()||userText.replace(/kvíz|quiz/gi,'').trim()||'Obecné').slice(0,60));return
       }
-      // Mood Board
-      if(intent==='moodboard'){setImgMode('generate_image');sendImg(userText);return}
     }
 
     const apiMode=isLoggedIn?detectAutoMode(userText,imgMode):'chat'
     if(apiMode==='generate_image'){setImgMode('generate_image');sendImg(userText);return}
-    if(apiMode==='web_search'){setImgMode('web_search');setTimeout(()=>sendWebSearch(),50);return}
+    if(apiMode==='web_search'){sendWebSearch(userText);return}
+
     const isFirst=(isLocal?activeConv.messages?.length:msgs.length)===0
     const api=[]
     atts.forEach(a=>{if(a.type.startsWith('image/'))api.push({type:'image',source:{type:'base64',media_type:a.type,data:a.data}});else api.push({type:'text',text:`[Soubor: ${a.name}]`})})
@@ -1237,14 +917,13 @@ export default function Chat({session}){
     const tmpUser={id:uid(),role:'user',content:userText,type:'text',created_at:new Date().toISOString(),_tmp:true,_atts:atts.map(a=>({id:a.id,name:a.name,type:a.type,preview:a.preview}))}
     setInput('');setAtts([]);setLoading(true);setErr(null)
     const prev=isLocal?(activeConv.messages??[]):msgs
-    if(isLocal){setConvs(p=>p.map(c=>{if(c.id!==cid)return c;const title=isFirst?userText.slice(0,38)+(userText.length>38?'…':''):c.title;return{...c,title,messages:[...(c.messages??[]),tmpUser]}}))}
+    if(isLocal)setConvs(p=>p.map(c=>{if(c.id!==cid)return c;const title=isFirst?userText.slice(0,38)+(userText.length>38?'…':''):c.title;return{...c,title,messages:[...(c.messages??[]),tmpUser]}}))
     else{setMsgs(p=>[...p,tmpUser]);if(isFirst&&activeConv.title==='Nová konverzace')autoTitle(cid,userText)}
     try{
       const history=[...prev,tmpUser].map(m=>({role:m.role,content:m.id===tmpUser.id&&api.length>0?api:[{type:'text',text:m.content}]}))
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
-      const payload={messages:history,system:sysPmt,thinking,memory,language:responseLang}
-      if(aiModel==='gemma-3-12b')payload.preferredModel='gemma-3-12b'
-      else if(aiModel==='gemini-auto')payload.preferredModel=null
+      const sysWithDate=sysPmt+getNowCtx()
+      const payload={messages:history,system:sysWithDate,thinking,memory,preferredModel:aiModel}
       const result=await callEdge(apiMode,payload,tk)
       const nid=uid();let aMsg
       if(result.type==='image_search'){
@@ -1252,33 +931,29 @@ export default function Chat({session}){
       }else{
         aMsg={id:nid,role:'assistant',type:'text',content:result.text??'(prázdná odpověď)',created_at:new Date().toISOString()}
         setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
-        setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*10,1200),12000))
+        setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,1000),10000))
       }
       addNewAnim(nid)
-      // Track for smart suggestions
-      if(aMsg.type==='text')setLastAiMsg(aMsg.content)
-      else setLastAiMsg('')
-      if(isLocal){setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))}
+      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       else{
-        const uRow=await saveMsg(cid,'user',userText,'text',null)
+        const uRow=await saveMsg(cid,'user',userText)
         if(aMsg.type==='image_search')await saveMsg(cid,'assistant',aMsg.content,'image_search',aMsg._images)
-        else{const ar=await saveMsg(cid,'assistant',aMsg.content,'text',null);if(ar)aMsg.dbId=ar.id}
+        else{const ar=await saveMsg(cid,'assistant',aMsg.content);if(ar)aMsg.dbId=ar.id}
         await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
-        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,dbId:uRow?.id},aMsg])
-        setUserMsgCnt(c=>c+1)
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])
       }
     }catch(e){setErr('Chyba: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:prev}:c));else setMsgs(prev);setInput(userText)}
     finally{setLoading(false)}
-  },[input,atts,loading,activeConv,msgs,isLoggedIn,imgMode,sysPmt,thinking,memory,token,imgModel,aiModel,webSearchType]) // eslint-disable-line
+  },[input,atts,loading,activeConv,msgs,isLoggedIn,imgMode,sysPmt,thinking,memory,token,imgModel,aiModel,webSearchType,tryAutoMemory]) // eslint-disable-line
 
   const onKey=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
   const displayMsgs=showStarred?(activeConv?.local?(activeConv.messages??[]):msgs).filter(m=>starred.has(m.id)):(activeConv?.local?(activeConv.messages??[]):msgs)
   const canSend=(input.trim()||atts.length>0)&&!loading
   const userInitial=session?(session.user.user_metadata?.full_name||session.user.email||'U')[0].toUpperCase():'?'
-  const currentAILabel=AI_MODELS.find(m=>m.id===aiModel)?.short||'G27B'
+  const currentModel=AI_MODELS.find(m=>m.id===aiModel)||AI_MODELS[0]
 
-  function getImgData(msg){
-    if(msg._images||msg._imageData||msg._quizData||msg._webData)return msg
+  function getMsgData(msg){
+    if(msg._images||msg._imageData||msg._quizData||msg._webData||msg._weatherData)return msg
     if(msg.image_url){try{
       const p=JSON.parse(msg.image_url)
       if(msg.type==='quiz')return{...msg,_quizData:Array.isArray(p)?p:[p]}
@@ -1290,45 +965,41 @@ export default function Chat({session}){
     return msg
   }
 
-  const phs={chat:thinking?'💭 Deep Thinking…':'Napište zprávu… (Enter = odeslat)',image_search:'📷 Popište co hledáte…',generate_image:'🎨 Popište obrázek…',web_search:webSearchType==='video'?'🎬 Hledej videa…':webSearchType==='image'?'🖼️ Hledej obrázky…':'🌐 Prohledej internet…'}
+  const phs={chat:thinking?'💭 Deep Thinking…':'Zeptat se Lumi…',image_search:'📷 Popište co hledáte…',generate_image:'🎨 Popište obrázek…',web_search:'🌐 Hledej na internetu…'}
 
+  // ── CSS ────────────────────────────────────────────────────────────────────
   const css=`
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
     *{box-sizing:border-box;margin:0;padding:0}
     ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrl};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${t.accent}66}
     textarea,input{font-family:inherit}textarea{resize:none;outline:none;border:none;background:transparent}input{outline:none;border:none;background:transparent}button{cursor:pointer;border:none;background:none;font-family:inherit}
-    @keyframes slideUp{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    @keyframes fadeInScale{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
-    @keyframes dropIn{from{opacity:0;transform:translateY(10px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes imgReveal{from{opacity:0;filter:blur(8px);transform:scale(.96)}to{opacity:1;filter:blur(0);transform:scale(1)}}
-    @keyframes sparkleIn{from{opacity:0;transform:translateY(8px) scale(.85)}to{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes checkIn{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:scale(1)}}
-    @keyframes slideUpBanner{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
-    @keyframes auroraFloat{0%,100%{transform:translateX(-50%) scale(1) rotate(0deg)}33%{transform:translateX(-52%) scale(1.12) rotate(2deg)}66%{transform:translateX(-48%) scale(1.08) rotate(-1deg)}}
-    @keyframes auroraFloat2{0%,100%{transform:scale(1) rotate(0deg);opacity:.6}50%{transform:scale(1.2) rotate(5deg);opacity:.9}}
-    @keyframes msgBounce{0%{opacity:0;transform:translateY(18px) scale(.93)}55%{transform:translateY(-4px) scale(1.015)}80%{transform:translateY(1px) scale(.998)}100%{opacity:1;transform:translateY(0) scale(1)}}
-    @keyframes msgSlideR{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes pu{0%,100%{opacity:.15;transform:scale(.7) translateY(2px)}50%{opacity:1;transform:scale(1) translateY(0)}}
+    @keyframes fadeInScale{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}
+    @keyframes dropIn{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes imgReveal{from{opacity:0;filter:blur(6px);transform:scale(.97)}to{opacity:1;filter:blur(0);transform:scale(1)}}
+    @keyframes msgBounce{0%{opacity:0;transform:translateY(14px) scale(.94)}55%{transform:translateY(-3px) scale(1.01)}100%{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes msgSlideR{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes pu{0%,100%{opacity:.15;transform:scale(.7)}50%{opacity:1;transform:scale(1)}}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-    @keyframes thinkPulse{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1)}}
     @keyframes thinkSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-    @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)}70%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
-    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-    @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-    @keyframes hintIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes thinkPulse{0%,100%{opacity:.4}50%{opacity:1}}
+    @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)}70%{box-shadow:0 0 0 8px rgba(248,113,113,0)}}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+    @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes auroraFloat{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-52%) scale(1.1)}}
+    @keyframes auroraFloat2{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.15);opacity:.9}}
     @keyframes shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
-    .msg-new-ai{animation:msgBounce .55s cubic-bezier(.34,1.56,.64,1) both}
-    .msg-new-user{animation:msgSlideR .35s cubic-bezier(.34,1.56,.64,1) both}
-    .msg-old{animation:fadeIn .2s ease both}
-    .dot span{display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.accent};margin:0 2.5px;animation:pu 1.4s infinite ease-in-out}
+    @keyframes slideUpBanner{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
+    @keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+    .msg-new-ai{animation:msgBounce .5s cubic-bezier(.34,1.56,.64,1) both}
+    .msg-new-user{animation:msgSlideR .3s cubic-bezier(.34,1.56,.64,1) both}
+    .msg-old{animation:fadeIn .15s ease both}
+    .dot span{display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.accent};margin:0 2px;animation:pu 1.4s infinite ease-in-out}
     .dot span:nth-child(2){animation-delay:.22s}.dot span:nth-child(3){animation-delay:.44s}
     .cr:hover{background:${t.active}!important}.cr:hover .cr-act{opacity:1!important}
-    .cr{transition:background .12s ease}
+    .cr{transition:background .1s}
     .ib:hover{opacity:.65}.ib{transition:opacity .15s}
-    .err-shake{animation:shake .5s ease}
-    .hint-btn{animation:hintIn .4s ease both}
-    .hint-btn:nth-child(1){animation-delay:.05s}.hint-btn:nth-child(2){animation-delay:.1s}.hint-btn:nth-child(3){animation-delay:.15s}.hint-btn:nth-child(4){animation-delay:.2s}
+    .err-shake{animation:shake .4s ease}
     .shimmer{background:linear-gradient(90deg,${t.btn} 25%,${t.active} 50%,${t.btn} 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
     @media(max-width:768px){.sidebar{position:fixed!important;top:0;left:0;bottom:0;z-index:30;box-shadow:4px 0 32px rgba(0,0,0,.6)}.sov{display:block!important}}
   `
@@ -1337,43 +1008,44 @@ export default function Chat({session}){
     <div style={{display:'flex',height:'100dvh',overflow:'hidden',background:t.bg,color:t.txt,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <style>{css}</style>
 
-      {selTxt&&selPos&&isLoggedIn&&imgMode==='chat'&&(
-        <div style={{position:'fixed',top:selPos.y,left:selPos.x,transform:'translate(-50%,-100%)',zIndex:70}}>
-          <SparkleBtn t={t} selectedText={selTxt} onGenerate={visualizeSelection}/>
-        </div>
-      )}
+      {/* Auto-mem toast */}
+      {autoMemToast&&<div style={{position:'fixed',top:14,left:'50%',transform:'translateX(-50%)',zIndex:90,background:t.green+'22',border:`1px solid ${t.green}44`,color:t.succ,padding:'7px 16px',borderRadius:20,fontSize:12,fontWeight:500,animation:'toastIn .3s ease',whiteSpace:'nowrap',backdropFilter:'blur(8px)'}}>{autoMemToast}</div>}
+
+      {/* Focus Timer floating */}
+      {showFocusTimer&&<div style={{position:'fixed',bottom:80,right:16,zIndex:45}}><FocusTimer t={t} onClose={()=>setShowFocusTimer(false)}/></div>}
 
       {sideOpen&&<div className="sov" onClick={()=>setSideOpen(false)} style={{display:'none',position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:29}}/>}
 
+      {/* ── SIDEBAR ────────────────────────────────────────────────────────── */}
       {sideOpen&&(
-        <aside className="sidebar" style={{width:272,background:t.side,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
-          <div style={{padding:'13px 12px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-            <div style={{display:'flex',alignItems:'center',gap:9}}>
-              <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
+        <aside className="sidebar" style={{width:266,background:t.side,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
+          <div style={{padding:'12px 11px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:7}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <LumiAvatar size={27} gradient={[t.gradA,t.gradB]}/>
               <div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{fontWeight:700,fontSize:14,color:t.txt}}>Lumi</span>
                   <span style={{fontSize:9,background:'#f59e0b22',color:'#f59e0b',padding:'1px 5px',borderRadius:3,fontWeight:700}}>BETA</span>
                 </div>
                 <div style={{fontSize:10,color:t.muted}}>Váš inteligentní asistent</div>
               </div>
             </div>
-            <div style={{display:'flex',gap:4}}>
+            <div style={{display:'flex',gap:3}}>
               <button className="ib" onClick={()=>{setSearchOpen(o=>!o);setTimeout(()=>searchRef.current?.focus(),100)}} style={{color:t.muted,display:'flex',padding:6,borderRadius:6,background:searchOpen?t.active:'transparent'}}>{Ic.search}</button>
-              <button onClick={newConv} style={{background:t.accent,color:'#fff',borderRadius:7,padding:'5px 9px',display:'flex',alignItems:'center'}}>{Ic.plus}</button>
+              <button onClick={newConv} style={{background:t.accent,color:'#fff',borderRadius:7,padding:'5px 8px',display:'flex',alignItems:'center'}}>{Ic.plus}</button>
             </div>
           </div>
 
           {searchOpen&&(
-            <div style={{padding:'8px 10px',borderBottom:`1px solid ${t.border}`}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,padding:'7px 10px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:9}}>
+            <div style={{padding:'7px 9px',borderBottom:`1px solid ${t.border}`}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 9px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8}}>
                 <span style={{color:t.muted,flexShrink:0}}>{Ic.search}</span>
                 <input ref={searchRef} value={searchQ} onChange={e=>doSearch(e.target.value)} placeholder="Hledat…" style={{flex:1,fontSize:13,color:t.txt}}/>
                 {searchQ&&<button onClick={()=>{setSearchQ('');setSearchRes([])}} style={{color:t.muted,display:'flex',padding:2}}>{Ic.x}</button>}
               </div>
               {searchRes.map(c=>(
                 <div key={c.id} onClick={()=>{selectConv(c.id);setSearchOpen(false);setSearchQ('');setSearchRes([])}}
-                  style={{padding:'7px 9px',borderRadius:7,cursor:'pointer',fontSize:13,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:4}}
+                  style={{padding:'6px 8px',borderRadius:6,cursor:'pointer',fontSize:13,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:3}}
                   onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
                   🔍 {c.title}
                 </div>
@@ -1381,119 +1053,108 @@ export default function Chat({session}){
             </div>
           )}
 
-          <div style={{flex:1,overflowY:'auto',padding:'5px'}}>
-            {dbLoad?<div style={{padding:16,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
+          <div style={{flex:1,overflowY:'auto',padding:'4px'}}>
+            {dbLoad?<div style={{padding:14,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
               :convs.map((c,ci)=>(
                 <div key={c.id} className="cr" onClick={()=>selectConv(c.id)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`,animation:`fadeIn .2s ease ${Math.min(ci*0.03,.2)}s both`}}>
+                  style={{display:'flex',alignItems:'center',gap:5,padding:'6px 8px',borderRadius:7,cursor:'pointer',marginBottom:2,background:c.id===activeId?t.active:'transparent',borderLeft:`3px solid ${c.id===activeId?(c.color||t.accent):(c.color||'transparent')}`,animation:`fadeIn .15s ease ${Math.min(ci*0.02,.15)}s both`}}>
                   {editId===c.id?(
                     <form onSubmit={e=>{e.preventDefault();renameConv(c.id,editTitle)}} style={{flex:1}} onClick={e=>e.stopPropagation()}>
-                      <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus style={{width:'100%',fontSize:13,color:t.txt,background:t.inBg,border:`1px solid ${t.accent}`,borderRadius:5,padding:'3px 7px'}}/>
+                      <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onBlur={()=>renameConv(c.id,editTitle)} autoFocus style={{width:'100%',fontSize:13,color:t.txt,background:t.inBg,border:`1px solid ${t.accent}`,borderRadius:5,padding:'2px 6px'}}/>
                     </form>
                   ):(
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:c.id===activeId?t.txt:t.muted}}>{c.title}</div>
-                      <div style={{fontSize:10,color:t.muted,marginTop:2}}>{c.local?'Dočasná':fmtDate(c.updated_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:1}}>{c.local?'Dočasná':fmtDate(c.updated_at)}</div>
                     </div>
                   )}
-                  <div className="cr-act" style={{display:'flex',gap:2,opacity:0,transition:'opacity .15s',flexShrink:0}}>
-                    <div style={{display:'flex',gap:2,alignItems:'center'}}>
-                      {CONV_COLORS.slice(1,5).map(col=>(
-                        <button key={col} onClick={e=>{e.stopPropagation();setConvColor(c.id,col)}} style={{width:10,height:10,borderRadius:'50%',background:col,border:`1.5px solid ${c.color===col?'#fff':t.border}`,cursor:'pointer'}}/>
-                      ))}
-                    </div>
-                    <button className="ib" onClick={e=>{e.stopPropagation();setEditId(c.id);setEditTitle(c.title)}} style={{color:t.muted,display:'flex',padding:4,borderRadius:5}}>{Ic.edit}</button>
-                    <button className="ib" onClick={e=>delConv(c.id,e)} style={{color:t.muted,display:'flex',padding:4,borderRadius:5}}>{Ic.trash}</button>
+                  <div className="cr-act" style={{display:'flex',gap:2,opacity:0,transition:'opacity .12s',flexShrink:0}}>
+                    <button className="ib" onClick={e=>{e.stopPropagation();setEditId(c.id);setEditTitle(c.title)}} style={{color:t.muted,display:'flex',padding:3,borderRadius:4}}>{Ic.edit}</button>
+                    <button className="ib" onClick={e=>delConv(c.id,e)} style={{color:t.muted,display:'flex',padding:3,borderRadius:4}}>{Ic.trash}</button>
                   </div>
                 </div>
               ))}
           </div>
 
-          <div style={{padding:'10px 11px',borderTop:`1px solid ${t.border}`}}>
+          <div style={{padding:'9px 10px',borderTop:`1px solid ${t.border}`}}>
             {isLoggedIn?(
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <div style={{width:32,height:32,borderRadius:9,background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}33)`,border:`1px solid ${t.gradA}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:t.accent,flexShrink:0}}>{userInitial}</div>
+              <div style={{display:'flex',alignItems:'center',gap:7}}>
+                <div style={{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}33)`,border:`1px solid ${t.gradA}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:t.accent,flexShrink:0}}>{userInitial}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:t.txt,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{session.user.user_metadata?.full_name||session.user.email}</div>
-                  <div style={{fontSize:10,color:t.muted}}>{userMsgCnt>0?`${userMsgCnt} zpráv`:'Přihlášen'}</div>
+                  <div style={{fontSize:10,color:t.muted}}>Přihlášen</div>
                 </div>
-                <button className="ib" onClick={()=>supabase.auth.signOut()} style={{color:t.muted,display:'flex',padding:4}} title="Odhlásit">{Ic.out}</button>
+                <button className="ib" onClick={()=>supabase.auth.signOut()} style={{color:t.muted,display:'flex',padding:3}} title="Odhlásit">{Ic.out}</button>
               </div>
             ):(
-              <button onClick={()=>setShowAuth(true)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:9,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:13,fontWeight:500,cursor:'pointer'}}>
+              <button onClick={()=>setShowAuth(true)} style={{width:'100%',display:'flex',alignItems:'center',gap:7,padding:'8px 11px',borderRadius:8,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:13,fontWeight:500,cursor:'pointer'}}>
                 <span style={{color:t.accent}}>{Ic.user}</span><span>Přihlásit se</span>
-                <span style={{marginLeft:'auto',fontSize:10,background:t.tag,padding:'2px 7px',borderRadius:4}}>Uloží historii</span>
+                <span style={{marginLeft:'auto',fontSize:10,background:t.tag,padding:'2px 6px',borderRadius:3}}>Uloží historii</span>
               </button>
             )}
           </div>
         </aside>
       )}
 
+      {/* ── MAIN ───────────────────────────────────────────────────────────── */}
       <main id="lumi-main" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,position:'relative'}}>
-        {isDragging&&(
-          <div style={{position:'absolute',inset:0,zIndex:60,background:t.accent+'22',border:`2px dashed ${t.accent}`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)',animation:'fadeIn .15s ease',pointerEvents:'none'}}>
-            <div style={{textAlign:'center',color:t.accent}}>
-              <div style={{fontSize:42,marginBottom:10}}>📎</div>
-              <div style={{fontSize:16,fontWeight:600}}>Přetáhni soubory sem</div>
-              <div style={{fontSize:12,opacity:.7,marginTop:4}}>Obrázky, PDF, kód…</div>
-            </div>
-          </div>
-        )}
 
-        <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 14px',height:52,background:t.hdr,borderBottom:`1px solid ${t.border}`,backdropFilter:'blur(12px)',flexShrink:0,gap:8}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+        {/* Drag overlay */}
+        {isDragging&&<div style={{position:'absolute',inset:0,zIndex:60,background:t.accent+'22',border:`2px dashed ${t.accent}`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)',pointerEvents:'none'}}><div style={{textAlign:'center',color:t.accent}}><div style={{fontSize:38,marginBottom:8}}>📎</div><div style={{fontSize:15,fontWeight:600}}>Přetáhni soubory sem</div></div></div>}
+
+        {/* ── HEADER — Gemini style ───────────────────────────────────────── */}
+        <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 14px',height:50,background:t.hdr,borderBottom:`1px solid ${t.border}`,backdropFilter:'blur(12px)',flexShrink:0,gap:7}}>
+          <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
             <button className="ib" onClick={()=>setSideOpen(o=>!o)} style={{color:t.muted,display:'flex',padding:5,flexShrink:0}}>{Ic.menu}</button>
-            <span style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{activeConv?.title||'Lumi'}</span>
-            {aiModel!=='default'&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,flexShrink:0,fontWeight:600}}>{currentAILabel}</span>}
-            {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,flexShrink:0,animation:'thinkPulse 1.5s infinite'}}>💭</span>}
+            <span style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:t.txt}}>{activeConv?.title||'Lumi'}</span>
+            {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 6px',borderRadius:4,flexShrink:0,animation:'thinkPulse 1.5s infinite'}}>💭</span>}
           </div>
           <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-            {isLoggedIn&&<button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.addMem}</button>}
-            <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>{showStarred?Ic.starF:Ic.star}</button>
-            <button className="ib" onClick={exportChat} title="Export" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.export}</button>
-            <button className="ib" onClick={()=>setMdMode(m=>!m)} title="Markdown" style={{display:'flex',alignItems:'center',gap:2,padding:'5px 8px',borderRadius:7,background:mdMode?t.accent+'22':t.btn,color:mdMode?t.accent:t.muted,border:`1px solid ${mdMode?t.accent:t.border}`,fontSize:11}}>MD</button>
-            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.gear}</button>
-            <button className="ib" onClick={()=>setThemeName(n=>{const ks=Object.keys(THEMES);return ks[(ks.indexOf(n)+1)%ks.length]})} title="Téma" style={{display:'flex',padding:'5px 8px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:14}}>
+            {isLoggedIn&&<button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.addMem}</button>}
+            <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>{showStarred?Ic.starF:Ic.star}</button>
+            <button className="ib" onClick={exportChat} title="Export" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.export}</button>
+            <button className="ib" onClick={()=>setMdMode(m=>!m)} title="Markdown" style={{display:'flex',alignItems:'center',padding:'5px 7px',borderRadius:7,background:mdMode?t.accent+'22':t.btn,color:mdMode?t.accent:t.muted,border:`1px solid ${mdMode?t.accent:t.border}`,fontSize:11}}>MD</button>
+            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.gear}</button>
+            <button className="ib" onClick={()=>setThemeName(n=>{const ks=Object.keys(THEMES);return ks[(ks.indexOf(n)+1)%ks.length]})} title="Téma" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:14}}>
               {THEME_LIST.find(th=>th.id===themeName)?.icon||'🎨'}
             </button>
-            {!isLoggedIn&&<button onClick={()=>setShowAuth(true)} title="Přihlásit se" style={{display:'flex',alignItems:'center',justifyContent:'center',width:32,height:32,borderRadius:8,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>{Ic.user}</button>}
+            {!isLoggedIn&&<button onClick={()=>setShowAuth(true)} style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>{Ic.user}</button>}
           </div>
         </header>
 
-        {explainTxt&&(
-          <div style={{padding:'10px 14px',background:t.purple+'18',borderBottom:`1px solid ${t.purple}44`,display:'flex',alignItems:'flex-start',gap:8,fontSize:13,animation:'fadeIn .3s ease'}}>
-            <span style={{color:t.purple,flexShrink:0,marginTop:1}}>{Ic.info}</span>
-            <span style={{color:t.txt,flex:1,lineHeight:1.5}}>{explainTxt}</span>
-            <button onClick={()=>setExplainTxt(null)} style={{color:t.muted,display:'flex',padding:3,flexShrink:0,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-          </div>
-        )}
-        {showStarred&&(
-          <div style={{padding:'7px 14px',background:'#f59e0b22',borderBottom:`1px solid #f59e0b44`,display:'flex',alignItems:'center',gap:8,fontSize:12}}>
-            <span style={{color:'#f59e0b'}}>⭐</span><span style={{color:t.txt}}>Oblíbené zprávy ({displayMsgs.length})</span>
-            <button onClick={()=>setShowStarred(false)} style={{color:t.muted,display:'flex',padding:3,marginLeft:'auto',background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-          </div>
-        )}
+        {/* Explain bar */}
+        {explainTxt&&<div style={{padding:'9px 13px',background:t.purple+'18',borderBottom:`1px solid ${t.purple}44`,display:'flex',alignItems:'flex-start',gap:7,fontSize:13,animation:'fadeIn .3s ease'}}>
+          <span style={{color:t.purple,flexShrink:0,marginTop:1}}>{Ic.info}</span>
+          <span style={{color:t.txt,flex:1,lineHeight:1.5}}>{explainTxt}</span>
+          <button onClick={()=>setExplainTxt(null)} style={{color:t.muted,display:'flex',padding:3,flexShrink:0,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+        </div>}
 
-        <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,position:'relative'}}>
+        {showStarred&&<div style={{padding:'6px 13px',background:'#f59e0b22',borderBottom:`1px solid #f59e0b44`,display:'flex',alignItems:'center',gap:7,fontSize:12}}>
+          <span style={{color:'#f59e0b'}}>⭐</span><span style={{color:t.txt}}>Oblíbené ({displayMsgs.length})</span>
+          <button onClick={()=>setShowStarred(false)} style={{color:t.muted,display:'flex',padding:3,marginLeft:'auto',background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+        </div>}
+
+        {/* ── MESSAGES ─────────────────────────────────────────────────────── */}
+        <div style={{flex:1,overflowY:'auto',padding:'14px 13px',display:'flex',flexDirection:'column',gap:11,position:'relative'}}>
           {displayMsgs.length===0&&!loading&&(
-            <div style={{textAlign:'center',marginTop:'7vh',padding:'0 16px',animation:'fadeIn .5s ease',position:'relative'}}>
+            <div style={{textAlign:'center',marginTop:'8vh',padding:'0 14px',animation:'fadeIn .4s ease',position:'relative'}}>
               <AuroraBeam t={t}/>
               <div style={{position:'relative',zIndex:1}}>
-                <div style={{display:'flex',justifyContent:'center',marginBottom:16,animation:'welcomeFloat 4s ease-in-out infinite'}}>
-                  <LumiAvatar size={64} gradient={[t.gradA,t.gradB]}/>
+                <div style={{display:'flex',justifyContent:'center',marginBottom:14,animation:'welcomeFloat 4s ease-in-out infinite'}}>
+                  <LumiAvatar size={60} gradient={[t.gradA,t.gradB]}/>
                 </div>
-                <div style={{fontSize:23,fontWeight:700,marginBottom:8,color:t.txt}}>{showStarred?'Žádné oblíbené zprávy':'Ahoj! Jsem Lumi.'}</div>
+                <div style={{fontSize:22,fontWeight:700,marginBottom:7,color:t.txt}}>{showStarred?'Žádné oblíbené':'Ahoj! Jsem Lumi.'}</div>
                 {!showStarred&&(
                   <>
-                    <div style={{fontSize:13,color:t.muted,marginBottom:20,lineHeight:1.6}}>
-                      {isLoggedIn?'Chat · AI Obrázky · Web Search · Fotografie · Kvízy · Live · Hlas':'Začněte psát — přihlášení není potřeba'}
+                    <div style={{fontSize:13,color:t.muted,marginBottom:18,lineHeight:1.6}}>
+                      {isLoggedIn?'Gemma 4 31B · Web Search · AI Obrázky · Kvízy · Počasí · Live · Focus Timer':'Začněte psát — bez přihlášení'}
                     </div>
-                    <div style={{display:'flex',gap:7,justifyContent:'center',flexWrap:'wrap',maxWidth:520,margin:'0 auto'}}>
-                      {(isLoggedIn?['Jak funguje kvantové počítání?','Najdi fotky Prahy','Vygeneruj: forest at sunset','Kvíz o historii ČR']:['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']).map((hint,hi)=>(
-                        <button key={hint} onClick={()=>setInput(hint)} className="hint-btn"
-                          style={{padding:'7px 14px',borderRadius:20,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:12,transition:'all .25s cubic-bezier(.34,1.56,.64,1)',cursor:'pointer',animationDelay:`${hi*0.05}s`}}
-                          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt;e.currentTarget.style.transform='translateY(-3px) scale(1.03)';e.currentTarget.style.boxShadow=`0 6px 20px ${t.accent}30`}}
-                          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.transform='translateY(0) scale(1)';e.currentTarget.style.boxShadow='none'}}>
+                    <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',maxWidth:500,margin:'0 auto'}}>
+                      {(isLoggedIn?['Jak funguje kvantové počítání?','Vygeneruj obrázek lesa','Jaké je počasí v Praze','Udělej kvíz o historii']:['Jak funguje AI?','Napiš mi báseň','Co je strojové učení?','Pomoz mi s kódem']).map((hint,hi)=>(
+                        <button key={hint} onClick={()=>setInput(hint)}
+                          style={{padding:'6px 13px',borderRadius:20,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:12,transition:'all .2s ease',cursor:'pointer',animationDelay:`${hi*0.05}s`}}
+                          onMouseOver={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.color=t.txt;e.currentTarget.style.transform='translateY(-2px)'}}
+                          onMouseOut={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.color=t.muted;e.currentTarget.style.transform='translateY(0)'}}>
                           {hint}
                         </button>
                       ))}
@@ -1505,314 +1166,277 @@ export default function Chat({session}){
           )}
 
           {displayMsgs.map(msg=>{
-            const m=getImgData(msg)
-            const isWide=['image_search','generated_image','quiz','web_search'].includes(msg.type)
+            const m=getMsgData(msg)
+            const isWide=['image_search','generated_image','quiz','web_search','weather'].includes(msg.type)
             const isStar=starred.has(msg.id),isNew=newIds.has(msg.id),isTyp=typingIds.has(msg.id)
             const isPinned=pinnedMsgs.has(msg.id)
             const animCls=isNew?(msg.role==='user'?'msg-new-user':'msg-new-ai'):'msg-old'
             return(
-              <div key={msg.id} className={animCls} style={{display:'flex',gap:8,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
-                {msg.role==='assistant'&&<LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>}
-                <div style={{maxWidth:isWide?'94%':'80%',minWidth:40}}>
-                  {isPinned&&<div style={{fontSize:10,color:t.accent,marginBottom:3,display:'flex',alignItems:'center',gap:4}}>{Ic.pin} Připnuto</div>}
+              <div key={msg.id} className={animCls} style={{display:'flex',gap:7,justifyContent:msg.role==='user'?'flex-end':'flex-start',alignItems:'flex-start'}}>
+                {msg.role==='assistant'&&<LumiAvatar size={27} gradient={[t.gradA,t.gradB]}/>}
+                <div style={{maxWidth:isWide?'94%':'80%',minWidth:36}}>
+                  {isPinned&&<div style={{fontSize:10,color:t.accent,marginBottom:2,display:'flex',alignItems:'center',gap:3}}>{Ic.pin} Připnuto</div>}
                   {msg._atts?.length>0&&(
-                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6,justifyContent:'flex-end'}}>
+                    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:5,justifyContent:'flex-end'}}>
                       {msg._atts.map(a=>a.preview
-                        ?<img key={a.id} src={a.preview} alt={a.name} style={{height:60,width:60,objectFit:'cover',borderRadius:8,border:`1px solid ${t.border}`}}/>
-                        :<div key={a.id} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',background:t.pill,borderRadius:7,fontSize:12,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>
+                        ?<img key={a.id} src={a.preview} alt={a.name} style={{height:54,width:54,objectFit:'cover',borderRadius:7,border:`1px solid ${t.border}`}}/>
+                        :<div key={a.id} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',background:t.pill,borderRadius:6,fontSize:11,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>
                       )}
                     </div>
                   )}
                   {msg.type==='weather'?(
-                    <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
-                      {(m._weatherData||msg._weatherData)?<WeatherCard data={m._weatherData||msg._weatherData} t={t}/>
-                        :<div style={{color:t.muted,fontSize:13}}>Data počasí nejsou k dispozici.</div>}
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
+                    <div style={{padding:'11px 13px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+                      {(m._weatherData||msg._weatherData)?<WeatherCard data={m._weatherData||msg._weatherData} t={t}/>:<div style={{color:t.muted,fontSize:13}}>Data počasí nedostupná.</div>}
+                      <div style={{fontSize:10,color:t.muted,marginTop:7,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='web_search'?(
-                    <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+                    <div style={{padding:'11px 13px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <WebSearchResults data={m._webData||{results:[],query:'',searchType:'web'}} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:7,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='image_search'?(
-                    <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+                    <div style={{padding:'11px 13px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <ImgGrid images={m._images} query={m._query||msg.content} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:7,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='generated_image'?(
-                    <div style={{padding:'12px 14px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
+                    <div style={{padding:'11px 13px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`}}>
                       <GenImg imageData={m._imageData} mimeType={m._mimeType} prompt={m._prompt} modelId={m._modelId||imgModel} t={t}/>
-                      <div style={{fontSize:10,color:t.muted,marginTop:8,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
+                      <div style={{fontSize:10,color:t.muted,marginTop:7,textAlign:'right'}}>{fmtRelTime(msg.created_at)}</div>
                     </div>
                   ):msg.type==='quiz'?(
                     <QuizCard questions={m._quizData} t={t}/>
                   ):(
                     <div>
-                      <div style={{padding:'10px 14px',background:msg.role==='user'?t.accent:t.aiB,color:msg.role==='user'?'#fff':t.txt,borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',border:msg.role==='assistant'?`1px solid ${isStar?'#f59e0b':t.border}`:'none',opacity:msg._tmp?0.7:1}}>
+                      <div style={{padding:'9px 13px',background:msg.role==='user'?t.accent:t.aiB,color:msg.role==='user'?'#fff':t.txt,borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',border:msg.role==='assistant'?`1px solid ${isStar?'#f59e0b':t.border}`:'none',opacity:msg._tmp?0.7:1}}>
                         {msg.role==='assistant'&&(isTyp||(!msg._tmp&&mdMode))
                           ?isTyp?<TypingText text={msg.content} isDark={t.isDark} useMarkdown={mdMode} onDone={()=>setTypingIds(s=>{const n=new Set(s);n.delete(msg.id);return n})}/>
                             :<div style={{fontSize:14,lineHeight:1.7,wordBreak:'break-word'}} dangerouslySetInnerHTML={{__html:renderMD(msg.content,t.isDark)}}/>
                           :<div style={{fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{msg.content}</div>
                         }
-                        <div style={{fontSize:10,color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted,marginTop:4,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}}>
+                        <div style={{fontSize:10,color:msg.role==='user'?'rgba(255,255,255,.5)':t.muted,marginTop:3,textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:5}}>
                           {isStar&&<span style={{color:'#f59e0b'}}>⭐</span>}
                           {isPinned&&<span style={{color:t.accent}}>📌</span>}
                           {fmtRelTime(msg.created_at)}
                         </div>
                       </div>
-                      {msg.role==='assistant'&&!msg._tmp&&(
-                        <MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onSaveMemory={saveMemory} onStar={starMsg} starred={isStar} onReact={addReaction} reactions={reactions} onPin={pinMsg} pinned={isPinned}/>
-                      )}
-                      {/* Věc #2: Smart suggestions pod poslední AI zprávou */}
-                      {msg.role==='assistant'&&!msg._tmp&&!loading&&msg.type==='text'&&displayMsgs.at(-1)?.id===msg.id&&(
-                        <SmartSuggestions text={msg.content} t={t} onSelect={txt=>{setInput(txt);taRef.current?.focus()}}/>
-                      )}
+                      {msg.role==='assistant'&&!msg._tmp&&<MsgActions msg={msg} t={t} isLoggedIn={isLoggedIn} token={token} onExplain={explainMsg} onStar={starMsg} starred={isStar} onPin={pinMsg} pinned={isPinned}/>}
                     </div>
                   )}
                 </div>
-                {msg.role==='user'&&(
-                  <div style={{width:28,height:28,borderRadius:8,background:isLoggedIn?t.accent+'88':t.ua,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'#fff',flexShrink:0,marginTop:2}}>{isLoggedIn?userInitial:'?'}</div>
-                )}
+                {msg.role==='user'&&<div style={{width:27,height:27,borderRadius:7,background:isLoggedIn?t.accent+'88':t.ua,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,color:'#fff',flexShrink:0,marginTop:2}}>{isLoggedIn?userInitial:'?'}</div>}
               </div>
             )
           })}
 
           {loading&&(
-            <div style={{display:'flex',gap:8,alignItems:'flex-start',animation:'fadeIn .25s ease'}} className="msg-new-ai">
-              <LumiAvatar size={28} gradient={[t.gradA,t.gradB]}/>
-              <div style={{padding:'12px 16px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:80}}>
-                {imgMode==='generate_image'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Generuji obrázek (30–90 s)…</span></div>)
-                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>🔍 Prohledávám internet…</span></div>)
-                :imgMode==='image_search'?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.green}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:13,color:t.muted}}>Hledám fotografie…</span></div>)
-                :thinking?(<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/><span style={{fontSize:13,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span></div>)
+            <div style={{display:'flex',gap:7,alignItems:'flex-start',animation:'fadeIn .2s ease'}} className="msg-new-ai">
+              <LumiAvatar size={27} gradient={[t.gradA,t.gradB]}/>
+              <div style={{padding:'11px 15px',background:t.aiB,borderRadius:'16px 16px 16px 4px',border:`1px solid ${t.border}`,minWidth:70}}>
+                {imgMode==='generate_image'?(<div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:12,color:t.muted}}>Generuji obrázek…</span></div>)
+                :imgMode==='web_search'?(<div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.accent}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:12,color:t.muted}}>🔍 Prohledávám…</span></div>)
+                :imgMode==='image_search'?(<div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.green}`,borderTopColor:'transparent',animation:'thinkSpin .8s linear infinite'}}/><span style={{fontSize:12,color:t.muted}}>Hledám fotky…</span></div>)
+                :thinking?(<div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${t.purple}`,borderTopColor:'transparent',animation:'thinkSpin 1s linear infinite'}}/><span style={{fontSize:12,color:t.purple,animation:'thinkPulse 1.5s infinite'}}>Lumi přemýšlí…</span></div>)
                 :(<div className="dot"><span/><span/><span/></div>)}
               </div>
             </div>
           )}
 
-          {err&&(
-            <div className="err-shake" style={{padding:'9px 13px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:8,wordBreak:'break-word',alignItems:'flex-start',flexWrap:'wrap'}}>
-              <span style={{flexShrink:0}}>⚠️</span>
-              <span style={{flex:1}}>{err}</span>
-              <div style={{display:'flex',gap:6,flexShrink:0}}>
-                {/* Věc #3: Retry button */}
-                <RetryBtn t={t} onRetry={()=>{setErr(null);retryLast()}} lastMsg={displayMsgs.filter(m=>m.role==='user').at(-1)}/>
-                <button onClick={()=>setErr(null)} style={{color:'#fca5a5',display:'flex',padding:2,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-              </div>
+          {err&&<div className="err-shake" style={{padding:'8px 12px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:9,fontSize:13,color:'#fca5a5',display:'flex',gap:7,wordBreak:'break-word',alignItems:'flex-start'}}>
+            <span style={{flexShrink:0}}>⚠️</span>
+            <span style={{flex:1}}>{err}</span>
+            <div style={{display:'flex',gap:5,flexShrink:0}}>
+              <button onClick={()=>{setErr(null);const allMsgs=activeConv?.local?(activeConv.messages??[]):msgs;const lu=allMsgs.filter(m=>m.role==='user').at(-1);if(lu)setInput(lu.content)}} style={{fontSize:11,color:t.accent,background:t.btn,border:`1px solid ${t.border}`,borderRadius:5,padding:'2px 7px',cursor:'pointer',fontFamily:'inherit'}}>🔄 Zkusit znovu</button>
+              <button onClick={()=>setErr(null)} style={{color:'#fca5a5',display:'flex',padding:2,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
             </div>
-          )}
+          </div>}
           <div ref={endRef}/>
         </div>
 
-        <div style={{padding:'8px 12px 10px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
+        {/* ── INPUT AREA — Gemini style ─────────────────────────────────────── */}
+        <div style={{padding:'7px 11px 9px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
+
+          {/* Toolbar — pouze přihlášeni — VŠE v dropdownech (Gemini style) */}
           {isLoggedIn&&(
             <div style={{display:'flex',gap:5,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
-              <button onClick={()=>setShowLive(true)} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.3)',animation:'livePulse 2s infinite',cursor:'pointer',fontFamily:'inherit'}}>{Ic.live} Live</button>
 
-              <ToolDropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode}>
-                <div style={{padding:'6px 0'}}>
-                  {[{id:'chat',icon:'💬',label:'Chat',sub:null,clr:t.accent},{id:'generate_image',icon:'🎨',label:'AI Obrázek',sub:'Pollinations.ai',clr:t.purple},{id:'web_search',icon:'🔍',label:'Web Search',sub:'SearXNG — open-source, zdarma',clr:t.green},{id:'image_search',icon:'📷',label:'Hledat fotografie',sub:'Unsplash',clr:t.accent}].map(item=>(
-                    <button key={item.id} onClick={()=>{setImgMode(item.id);setQuizMode(false)}}
-                      style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:imgMode===item.id&&!quizMode?item.clr+'22':'transparent',color:imgMode===item.id&&!quizMode?item.clr:t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                      <span style={{fontSize:16}}>{item.icon}</span>
-                      <div style={{flex:1}}><div style={{fontWeight:imgMode===item.id&&!quizMode?600:400}}>{item.label}</div>{item.sub&&<div style={{fontSize:10,color:t.muted}}>{item.sub}</div>}</div>
-                      {imgMode===item.id&&!quizMode&&<span style={{color:item.clr}}>{Ic.check}</span>}
-                    </button>
-                  ))}
-                  <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                  <button onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat')}}
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:quizMode?'#f59e0b22':'transparent',color:quizMode?'#f59e0b':t.txt,fontSize:13,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                    <span style={{fontSize:16}}>🎓</span><div style={{flex:1,fontWeight:quizMode?600:400}}>Kvíz</div>{quizMode&&<span style={{color:'#f59e0b'}}>{Ic.check}</span>}
-                  </button>
+              {/* Live */}
+              <button onClick={()=>setShowLive(true)} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 9px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.3)',animation:'livePulse 2.5s infinite',cursor:'pointer',fontFamily:'inherit'}}>
+                {Ic.live} Live
+              </button>
+
+              {/* Nástroje — vše */}
+              <Dropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode}>
+                <div style={{padding:'5px 0'}}>
+                  <DItem t={t} onClick={()=>{setImgMode('chat');setQuizMode(false)}} active={imgMode==='chat'&&!quizMode} clr={t.accent} icon="💬" label="Chat" sub="Gemma 4 31B"/>
+                  <DItem t={t} onClick={()=>{setImgMode('generate_image');setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
+                  <DItem t={t} onClick={()=>{setImgMode('web_search');setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="Google Grounding"/>
+                  <DItem t={t} onClick={()=>{setImgMode('image_search');setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Hledat fotografie" sub="Unsplash / Pixabay"/>
+                  <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat')}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz"/>
+                  <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
                 </div>
-              </ToolDropdown>
+              </Dropdown>
 
-              <ToolDropdown t={t} label="Model" icon={Ic.model} accent={t.purple} active={aiModel!=='default'||thinking}>
-                <div style={{padding:'6px 0'}}>
-                  <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>Chat model</div>
+              {/* Model */}
+              <Dropdown t={t} label="Model" icon={Ic.model} accent={t.purple} active={aiModel!=='default'||thinking}>
+                <div style={{padding:'5px 0'}}>
+                  <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Chat model</div>
                   {AI_MODELS.map(m=>(
-                    <button key={m.id} onClick={()=>setAiModel(m.id)}
-                      style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:aiModel===m.id?t.purple+'22':'transparent',color:aiModel===m.id?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                      <div style={{flex:1}}><div style={{fontWeight:aiModel===m.id?600:400}}>{m.name}</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>{m.desc}</div></div>
-                      {aiModel===m.id&&<span style={{color:t.purple,flexShrink:0}}>{Ic.check}</span>}
-                    </button>
+                    <DItem key={m.id} t={t} onClick={()=>setAiModel(m.id)} active={aiModel===m.id} clr={t.purple} icon={m.id==='default'?'✦':m.id==='gemini-25-pro'?'💎':'⚡'} label={m.name} sub={m.desc}/>
                   ))}
-                  <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                  <button onClick={()=>setThinking(x=>!x)}
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:thinking?t.purple+'22':'transparent',color:thinking?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                    <span style={{fontSize:14}}>💭</span>
-                    <div style={{flex:1}}><div style={{fontWeight:thinking?600:400}}>Deep Thinking</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>Gemini 2.5 — pomalejší, přesnější</div></div>
-                    {thinking&&<span style={{color:t.purple,flexShrink:0}}>{Ic.check}</span>}
-                  </button>
-                  {imgMode==='generate_image'&&(<>
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>Obrázky · Pollinations</div>
-                    {IMG_MODELS.map(m=>(
-                      <button key={m.id} onClick={()=>setImgModel(m.id)}
-                        style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:imgModel===m.id?t.purple+'22':'transparent',color:imgModel===m.id?t.purple:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                        <div style={{flex:1}}><div style={{fontWeight:imgModel===m.id?600:400}}>{m.name}</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>{m.desc}</div></div>
-                        {imgModel===m.id&&<span style={{color:t.purple,flexShrink:0}}>{Ic.check}</span>}
-                      </button>
-                    ))}
-                  </>)}
-                  {imgMode==='web_search'&&(<>
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',padding:'4px 12px 6px'}}>🦆 Typ hledání</div>
-                    {WEB_SEARCH_TYPES.map(st=>(
-                      <button key={st.id} onClick={()=>setWebSearchType(st.id)}
-                        style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:webSearchType===st.id?t.green+'22':'transparent',color:webSearchType===st.id?t.green:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-                        <div style={{flex:1}}><div style={{fontWeight:webSearchType===st.id?600:400}}>{st.label}</div><div style={{fontSize:10,color:t.muted,marginTop:1}}>{st.desc}</div></div>
-                        {webSearchType===st.id&&<span style={{color:t.green,flexShrink:0}}>{Ic.check}</span>}
-                      </button>
-                    ))}
-                  </>)}
+                  <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <DItem t={t} onClick={()=>setThinking(x=>!x)} active={thinking} clr={t.purple} icon="💭" label="Deep Thinking" sub="Gemini 3.1 / 2.5 Pro — přesnější"/>
+                  {imgMode==='generate_image'&&(
+                    <>
+                      <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Obrázky · Pollinations</div>
+                      {IMG_MODELS.map(m=><DItem key={m.id} t={t} onClick={()=>setImgModel(m.id)} active={imgModel===m.id} clr={t.purple} icon="🎨" label={m.name} sub={m.desc}/>)}
+                    </>
+                  )}
+                  {imgMode==='web_search'&&(
+                    <>
+                      <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Typ hledání</div>
+                      {WEB_SEARCH_TYPES.map(st=><DItem key={st.id} t={t} onClick={()=>setWebSearchType(st.id)} active={webSearchType===st.id} clr={t.green} icon={st.label.split(' ')[0]} label={st.label} sub={st.desc}/>)}
+                    </>
+                  )}
                 </div>
-              </ToolDropdown>
+              </Dropdown>
 
+              {/* Active mode badge */}
               {imgMode!=='chat'&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:imgMode==='generate_image'?t.purple+'22':imgMode==='web_search'?t.green+'22':'rgba(34,197,94,.15)',color:imgMode==='generate_image'?t.purple:imgMode==='web_search'?t.green:t.green,fontWeight:600,flexShrink:0}}>
-                {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name}`:imgMode==='web_search'?`🦆 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label}`:' 📷 Fotky'}
+                {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name}`:imgMode==='web_search'?`🌐 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label}`:'📷 Fotky'}
               </span>}
               {imgMode==='generate_image'&&<PollenBadge t={t} imgModel={imgModel} pollenInfo={pollenInfo}/>}
-              {/* Věc #4: Styl obrázku toggle */}
-              {imgMode==='generate_image'&&(
-                <button onClick={()=>setShowImgStyles(s=>!s)}
-                  style={{padding:'4px 9px',borderRadius:7,background:showImgStyles?t.purple+'22':t.btn,color:showImgStyles?t.purple:t.muted,border:`1px solid ${showImgStyles?t.purple:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>
-                  🎨 Styl
-                </button>
-              )}
-              {/* NOVÉ 5 funkcí — vždy viditelné */}
-              <button onClick={()=>{setShowWeather(s=>!s);setShowTemplates(false);setShowCalc(false)}}
-                style={{padding:'4px 9px',borderRadius:7,background:showWeather?t.accent+'22':t.btn,color:showWeather?t.accent:t.muted,border:`1px solid ${showWeather?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-                title="Počasí">🌤️</button>
-              <button onClick={()=>{setShowTemplates(s=>!s);setShowWeather(false);setShowCalc(false)}}
-                style={{padding:'4px 9px',borderRadius:7,background:showTemplates?t.accent+'22':t.btn,color:showTemplates?t.accent:t.muted,border:`1px solid ${showTemplates?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-                title="Šablony">📝</button>
-              <button onClick={()=>{setShowCalc(s=>!s);setShowWeather(false);setShowTemplates(false)}}
-                style={{padding:'4px 9px',borderRadius:7,background:showCalc?t.accent+'22':t.btn,color:showCalc?t.accent:t.muted,border:`1px solid ${showCalc?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-                title="Kalkulačka">🔢</button>
-              <button onClick={()=>{setShowBookmarks(s=>!s);setShowWeather(false);setShowTemplates(false);setShowCalc(false)}}
-                style={{padding:'4px 9px',borderRadius:7,background:showBookmarks?t.accent+'22':t.btn,color:showBookmarks?t.accent:t.muted,border:`1px solid ${showBookmarks?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}
-                title="Záložky promptů">🔖</button>
-              {/* Jazyk odpovědí */}
-              <div style={{position:'relative'}}>
-                <button onClick={()=>setShowLangPicker(s=>!s)}
-                  style={{padding:'4px 9px',borderRadius:7,background:showLangPicker?t.accent+'22':t.btn,color:showLangPicker?t.accent:t.muted,border:`1px solid ${showLangPicker?t.accent:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s',display:'flex',alignItems:'center',gap:3}}
-                  title="Jazyk odpovědí">
-                  {RESPONSE_LANGS.find(l=>l.code===responseLang)?.flag||'🌍'} {Ic.chevDn}
-                </button>
-                {showLangPicker&&(
-                  <div style={{position:'absolute',bottom:'calc(100% + 6px)',left:0,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,padding:4,zIndex:40,boxShadow:`0 8px 24px rgba(0,0,0,.4)`,animation:'dropIn .2s ease',minWidth:120}}>
-                    {RESPONSE_LANGS.map(l=>(
-                      <button key={l.code} onClick={()=>{setResponseLang(l.code);setShowLangPicker(false)}}
-                        style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'7px 10px',borderRadius:7,background:responseLang===l.code?t.accent+'22':'transparent',color:responseLang===l.code?t.accent:t.txt,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit'}}>
-                        <span>{l.flag}</span><span>{l.label}</span>
-                        {responseLang===l.code&&<span style={{marginLeft:'auto',color:t.accent}}>{Ic.check}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+
+              {/* Model badge */}
+              {aiModel!=='default'&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,fontWeight:600,flexShrink:0}}>{currentModel?.short}</span>}
             </div>
           )}
 
+          {/* Quiz panel */}
           {quizMode&&(
-            <div style={{marginBottom:8,padding:'12px',background:t.tag,borderRadius:10,border:`1px solid #f59e0b44`,animation:'dropIn .25s cubic-bezier(.34,1.56,.64,1)'}}>
-              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…"
-                style={{width:'100%',padding:'8px 12px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:10,boxSizing:'border-box'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{marginBottom:7,padding:'11px',background:t.tag,borderRadius:9,border:`1px solid #f59e0b44`,animation:'dropIn .2s ease'}}>
+              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…" style={{width:'100%',padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:9,boxSizing:'border-box'}}/>
+              <div style={{display:'flex',gap:9,alignItems:'center',flexWrap:'wrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Počet:</span>
-                  <div style={{display:'flex',gap:4}}>{QUIZ_COUNTS.map(n=>(<button key={n} onClick={()=>setQuizCount(n)} style={{padding:'4px 8px',borderRadius:6,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:28,transition:'all .15s'}}>{n}</button>))}</div>
+                  <div style={{display:'flex',gap:3}}>{QUIZ_COUNTS.map(n=><button key={n} onClick={()=>setQuizCount(n)} style={{padding:'3px 7px',borderRadius:5,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:26}}>{n}</button>)}</div>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Obtížnost:</span>
-                  <div style={{display:'flex',gap:4}}>{QUIZ_DIFFS.map(([v,l])=>(<button key={v} onClick={()=>setQuizDiff(v)} style={{padding:'4px 9px',borderRadius:6,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400,transition:'all .15s'}}>{l}</button>))}</div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Obtíž:</span>
+                  <div style={{display:'flex',gap:3}}>{QUIZ_DIFFS.map(([v,l])=><button key={v} onClick={()=>setQuizDiff(v)} style={{padding:'3px 8px',borderRadius:5,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400}}>{l}</button>)}</div>
                 </div>
-                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'6px 16px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto'}}>Start 🎓</button>
+                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'5px 14px',borderRadius:7,background:'#f59e0b',color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto'}}>Start 🎓</button>
               </div>
             </div>
           )}
 
-          {/* Věc #1: Image Style Presets — zobrazí se když je aktivní generate_image a toggle zapnutý */}
-          {imgMode==='generate_image'&&showImgStyles&&(
-            <ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>
-          )}
+          {/* Image styles */}
+          {imgMode==='generate_image'&&showImgStyles&&<ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>}
 
-          {/* NOVÁ FUNKCE 1: Počasí input */}
-          {showWeather&&(
-            <WeatherInput t={t} onSearch={city=>{setShowWeather(false);sendWeather(city)}}/>
-          )}
-
-          {/* NOVÁ FUNKCE 2: Šablony */}
+          {/* Templates panel */}
           {showTemplates&&(
-            <div style={{marginBottom:8,background:t.modal,border:`1px solid ${t.border}`,borderRadius:10,overflow:'hidden',animation:'dropIn .2s ease'}}>
-              <div style={{padding:'7px 12px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.muted,fontWeight:600}}>📝 Šablony zpráv</div>
-              <TemplatePanel t={t} onSelect={txt=>{setInput(txt);setShowTemplates(false);taRef.current?.focus()}}/>
+            <div style={{marginBottom:7,background:t.modal,border:`1px solid ${t.border}`,borderRadius:9,overflow:'hidden',animation:'dropIn .2s ease'}}>
+              <div style={{padding:'6px 11px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.muted,fontWeight:600,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                📝 Šablony
+                <button onClick={()=>setShowTemplates(false)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',display:'flex',padding:2}}>{Ic.x}</button>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',maxHeight:240,overflowY:'auto'}}>
+                {TEMPLATES.map(tp=>(
+                  <button key={tp.label} onClick={()=>{setInput(tp.text);setShowTemplates(false);taRef.current?.focus()}} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',background:'transparent',color:t.txt,fontSize:12,textAlign:'left',cursor:'pointer',fontFamily:'inherit',border:'none',transition:'background .1s'}} onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                    <span style={{fontSize:16,flexShrink:0}}>{tp.icon}</span><span style={{color:t.muted,fontSize:12}}>{tp.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* NOVÁ FUNKCE 3: Kalkulačka */}
-          {showCalc&&(
-            <div style={{marginBottom:8,animation:'dropIn .2s ease'}}>
-              <CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>
+          {/* Calc widget */}
+          {showCalc&&<CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>}
+
+          {/* Bookmarks */}
+          {showBookmarks&&<PromptBookmarks t={t} input={input} onSelect={txt=>{setInput(txt);setShowBookmarks(false);taRef.current?.focus()}}/>}
+
+          {/* Image style toggle inline */}
+          {imgMode==='generate_image'&&(
+            <div style={{display:'flex',gap:5,alignItems:'center',marginBottom:6}}>
+              <button onClick={()=>setShowImgStyles(s=>!s)} style={{padding:'3px 8px',borderRadius:6,background:showImgStyles?t.purple+'22':t.btn,color:showImgStyles?t.purple:t.muted,border:`1px solid ${showImgStyles?t.purple:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>🎨 Styl obrázku</button>
             </div>
           )}
 
-          {/* Unikátní funkce: Záložky promptů */}
-          {showBookmarks&&(
-            <PromptBookmarks t={t} input={input} onSelect={txt=>{setInput(txt);setShowBookmarks(false);taRef.current?.focus()}}/>
-          )}
-
+          {/* Attachments */}
           {atts.length>0&&(
-            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+            <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>
               {atts.map(a=>(
-                <div key={a.id} style={{position:'relative',animation:'sparkleIn .25s ease'}}>
-                  {a.preview?<img src={a.preview} alt={a.name} style={{height:46,width:46,objectFit:'cover',borderRadius:7,border:`1px solid ${t.border}`,display:'block'}}/>
-                    :<div style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',background:t.pill,borderRadius:7,fontSize:12,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>}
-                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))} style={{position:'absolute',top:-5,right:-5,width:16,height:16,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+                <div key={a.id} style={{position:'relative'}}>
+                  {a.preview?<img src={a.preview} alt={a.name} style={{height:44,width:44,objectFit:'cover',borderRadius:6,border:`1px solid ${t.border}`,display:'block'}}/>
+                    :<div style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',background:t.pill,borderRadius:6,fontSize:11,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>}
+                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))} style={{position:'absolute',top:-4,right:-4,width:15,height:15,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer',fontSize:9}}>✕</button>
                 </div>
               ))}
             </div>
           )}
 
-          {showMdBar&&mdMode&&<MdToolbar t={t} taRef={taRef} input={input} setInput={setInput}/>}
-
-          <div style={{display:'flex',alignItems:'flex-end',gap:6,padding:'9px 11px',background:t.inBg,border:`1.5px solid ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:14,transition:'border-color .2s'}}>
+          {/* ── GEMINI-STYLE INPUT BOX ─────────────────────────────────────── */}
+          <div style={{background:t.inBg,border:`1.5px solid ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:24,transition:'border-color .2s',padding:'10px 14px'}}>
             <textarea ref={taRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey}
               placeholder={phs[imgMode]} rows={1}
-              style={{flex:1,fontSize:14,lineHeight:1.5,color:t.txt,caretColor:t.accent,maxHeight:120,overflowY:'auto',paddingTop:2}}
+              style={{width:'100%',fontSize:14,lineHeight:1.5,color:t.txt,caretColor:t.accent,maxHeight:120,overflowY:'auto',display:'block',background:'transparent'}}
               onInput={e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}}/>
-            <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-              {wordCount>0&&<span style={{fontSize:10,color:t.muted,flexShrink:0}}>{wordCount}sl</span>}
-              {input.length>100&&<span style={{fontSize:10,color:input.length>1800?t.danger:input.length>1200?'#f59e0b':t.muted,flexShrink:0}}>{input.length}</span>}
-              {mdMode&&<button onClick={()=>setShowMdBar(m=>!m)} title="Markdown" style={{display:'flex',padding:5,borderRadius:7,background:showMdBar?t.accent+'22':t.btn,color:showMdBar?t.accent:t.muted,border:`1px solid ${showMdBar?t.accent:t.border}`,fontSize:11,cursor:'pointer',transition:'all .15s'}}>Md</button>}
+            {/* Bottom row: + tools, word count, action buttons, send */}
+            <div style={{display:'flex',alignItems:'center',gap:5,marginTop:8}}>
+              {/* + button — otvírá utility tools */}
+              <div style={{position:'relative'}}>
+                <Dropdown t={t} label="" icon={<span style={{fontSize:16,fontWeight:700}}>+</span>} active={showTemplates||showCalc||showBookmarks}>
+                  <div style={{padding:'5px 0'}}>
+                    <DItem t={t} onClick={()=>{setShowTemplates(s=>!s);setShowCalc(false);setShowBookmarks(false)}} active={showTemplates} clr={t.accent} icon="📝" label="Šablony zpráv"/>
+                    <DItem t={t} onClick={()=>{setShowCalc(s=>!s);setShowTemplates(false);setShowBookmarks(false)}} active={showCalc} clr={t.accent} icon="🔢" label="Kalkulačka"/>
+                    <DItem t={t} onClick={()=>{setShowBookmarks(s=>!s);setShowTemplates(false);setShowCalc(false)}} active={showBookmarks} clr={t.accent} icon="🔖" label="Záložky promptů"/>
+                    <DItem t={t} onClick={()=>fileRef.current.click()} active={false} clr={t.accent} icon="📎" label="Přidat soubor"/>
+                  </div>
+                </Dropdown>
+              </div>
+              {/* Word/char count */}
+              <div style={{flex:1,display:'flex',alignItems:'center',gap:5}}>
+                {wordCount>0&&<span style={{fontSize:10,color:t.muted}}>{wordCount} sl</span>}
+                {input.length>100&&<span style={{fontSize:10,color:input.length>1800?t.danger:input.length>1200?'#f59e0b':t.muted}}>{input.length}</span>}
+              </div>
+              {/* Voice */}
               <VoiceBtn t={t} onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
-              <button className="ib" onClick={()=>fileRef.current.click()} style={{color:t.muted,display:'flex',padding:5}} title="Přidat soubor (nebo přetáhni)">{Ic.clip}</button>
+              {/* Send */}
               <button onClick={send} disabled={!canSend}
-                style={{width:34,height:34,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',transform:canSend?'scale(1)':'scale(.92)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 4px 14px ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent}44`:'none'}}
-                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.1)'}}
+                style={{width:36,height:36,borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s ease',transform:canSend?'scale(1)':'scale(.9)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 3px 12px ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent}55`:'none'}}
+                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.08)'}}
                 onMouseOut={e=>{if(canSend)e.currentTarget.style.transform='scale(1)'}}>
                 {Ic.send}
               </button>
             </div>
           </div>
-          <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.py,.js,.ts,.html,.css" style={{display:'none'}} onChange={onFile}/>
+          <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.docx,.xlsx,.py,.js,.ts,.html,.css" style={{display:'none'}} onChange={onFile}/>
 
-          <div style={{fontSize:10,color:t.muted,textAlign:'center',marginTop:6,lineHeight:1.5}}>
-            <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 5px',borderRadius:3,fontWeight:700,marginRight:5}}>BETA</span>
-            Lumi může dělat chyby ·{' '}
-            <span style={{cursor:'pointer',textDecoration:'underline',color:t.muted}} onClick={()=>setShowShort(true)}>Ctrl+/ zkratky</span>
-            {isLoggedIn?<span> · ✅ Draft autosave</span>:<span> · Přihlaste se pro plné funkce</span>}
+          {/* Beta footer */}
+          <div style={{fontSize:10,color:t.muted,textAlign:'center',marginTop:5}}>
+            <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 5px',borderRadius:3,fontWeight:700,marginRight:4}}>BETA</span>
+            Lumi může dělat chyby · Ctrl+K nová konverzace
+            {isLoggedIn&&<span> · ✅ Auto-save</span>}
           </div>
         </div>
       </main>
 
-      {showAuth  &&<AuthModal onClose={()=>setShowAuth(false)} dark={t.isDark}/>}
-      {showSet   &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory} aiModel={aiModel} setAiModel={setAiModel} onAddMemory={()=>setShowAddMem(true)}/>}
-      {showLive  &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
-      {showAddMem&&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
-      {showShort &&<ShortcutsModal t={t} onClose={()=>setShowShort(false)}/>}
-      {!cookies  &&<CookieBanner t={t} onAccept={()=>{setCookies(true);localStorage.setItem('lumi_cookies','1')}}/>}
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+      {showAuth   &&<AuthModal onClose={()=>setShowAuth(false)} dark={t.isDark}/>}
+      {showSet    &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory}/>}
+      {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
+      {showAddMem &&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
+      {!cookies   &&<div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:80,padding:'12px 18px',background:t.isDark?'rgba(13,16,25,.97)':'rgba(255,255,255,.97)',backdropFilter:'blur(16px)',borderTop:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',boxShadow:'0 -4px 24px rgba(0,0,0,.2)',animation:'slideUpBanner .4s ease'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:180}}>
+          <span style={{fontSize:18}}>🍪</span>
+          <div><div style={{fontSize:12,fontWeight:600,color:t.txt}}>Lumi používá cookies</div><div style={{fontSize:10,color:t.muted}}>Ukládáme téma, nastavení a pollen limit. Žádné sledovací cookies.</div></div>
+        </div>
+        <button onClick={()=>{setCookies(true);localStorage.setItem('lumi_cookies','1')}} style={{padding:'8px 18px',borderRadius:8,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>Rozumím</button>
+      </div>}
     </div>
   )
 }
