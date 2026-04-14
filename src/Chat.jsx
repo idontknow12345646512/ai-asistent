@@ -1338,113 +1338,10 @@ export default function Chat({session}){
           <div ref={endRef}/>
         </div>
 
-        {/* ── INPUT AREA — Gemini style ─────────────────────────────────────── */}
+        {/* ── INPUT AREA — Claude.ai style ──────────────────────────────────── */}
         <div style={{padding:'7px 11px 9px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
 
-          {/* Toolbar — pouze přihlášeni — VŠE v dropdownech (Gemini style) */}
-          {isLoggedIn&&(
-            <div style={{display:'flex',gap:5,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
-              {/* Live */}
-              <button onClick={()=>setShowLive(true)} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 9px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.3)',animation:'livePulse 2.5s infinite',cursor:'pointer',fontFamily:'inherit'}}>
-                {Ic.live} Live
-              </button>
 
-              {/* Nástroje */}
-              <Dropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode||!!toolMode}>
-                <div style={{padding:'5px 0',maxHeight:420,overflowY:'auto'}}>
-                  {/* Základní */}
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Základní</div>
-                  <DItem t={t} onClick={()=>{setImgMode('chat');setQuizMode(false);setToolMode(null)}} active={imgMode==='chat'&&!quizMode&&!toolMode} clr={t.accent} icon="💬" label="Chat" sub="Gemma 4 31B"/>
-                  <DItem t={t} onClick={()=>{setImgMode('web_search');setQuizMode(false);setToolMode(null)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="SearXNG + DDG"/>
-                  <DItem t={t} onClick={()=>{setImgMode('generate_image');setQuizMode(false);setToolMode(null)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
-                  <DItem t={t} onClick={()=>{setImgMode('image_search');setQuizMode(false);setToolMode(null)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
-                  <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz" sub="Interaktivní test"/>
-                  <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
-
-                  {/* Textové nástroje */}
-                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Textové nástroje</div>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='translate'?null:'translate')} active={toolMode==='translate'} clr='#06b6d4' icon="🌍" label="Překlad" sub="Přeloží do libovolného jazyka"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='summarize'?null:'summarize')} active={toolMode==='summarize'} clr='#06b6d4' icon="📋" label="Sumarizace" sub="Zkrátí text do klíčových bodů"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='correct'?null:'correct')} active={toolMode==='correct'} clr='#06b6d4' icon="✅" label="Korektura" sub="Opraví chyby v textu"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='rewrite'?null:'rewrite')} active={toolMode==='rewrite'} clr='#06b6d4' icon="✏️" label="Přepis stylu" sub="Formálněji, casualněji, poeticky…"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='headlines'?null:'headlines')} active={toolMode==='headlines'} clr='#06b6d4' icon="📰" label="Generuj nadpisy" sub="5 různých variant titulků"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='seo'?null:'seo')} active={toolMode==='seo'} clr='#06b6d4' icon="🔍" label="SEO optimalizace" sub="Meta title, description, klíčová slova"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='email'?null:'email')} active={toolMode==='email'} clr='#06b6d4' icon="📧" label="Napsat e-mail" sub="Profesionální e-mail dle popisu"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='sentiment'?null:'sentiment')} active={toolMode==='sentiment'} clr='#06b6d4' icon="😊" label="Analýza sentimentu" sub="Jak lidé vnímají text"/>
-
-                  {/* Kódové nástroje */}
-                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Kód & Vývoj</div>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='refactor'?null:'refactor')} active={toolMode==='refactor'} clr='#f97316' icon="🔧" label="Refaktoring" sub="Vyčistí a zlepší kód"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='gen_tests'?null:'gen_tests')} active={toolMode==='gen_tests'} clr='#f97316' icon="🧪" label="Generuj testy" sub="Unit testy pro kód"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='convert_code'?null:'convert_code')} active={toolMode==='convert_code'} clr='#f97316' icon="🔄" label="Konverze kódu" sub="Python → JS, JS → TS…"/>
-
-                  {/* Analýza */}
-                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Analýza & Výzkum</div>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='analyze_doc'?null:'analyze_doc')} active={toolMode==='analyze_doc'} clr='#a855f7' icon="📄" label="Analyzuj dokument" sub="Otázka k dokumentu / PDF textu"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='fact_check'?null:'fact_check')} active={toolMode==='fact_check'} clr='#a855f7' icon="🔎" label="Fact Check" sub="Ověření pravdivosti tvrzení"/>
-
-                  {/* Kreativita */}
-                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Kreativita & Vzdělávání</div>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='brainstorm'?null:'brainstorm')} active={toolMode==='brainstorm'} clr='#22c55e' icon="💡" label="Brainstorming" sub="10 kreativních nápadů"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='presentation'?null:'presentation')} active={toolMode==='presentation'} clr='#22c55e' icon="📊" label="Tvorba prezentace" sub="Osnova slidů k tématu"/>
-                  <DItem t={t} onClick={()=>setToolMode(toolMode==='roleplay'?null:'roleplay')} active={toolMode==='roleplay'} clr='#22c55e' icon="🎭" label="Roleplay / Simulace" sub="Cvičení pohovoru, hraní rolí…"/>
-                </div>
-              </Dropdown>
-
-              {/* Model */}
-              <Dropdown t={t} label="Model" icon={Ic.model} accent={t.purple} active={aiModel!=='default'||thinking}>
-                <div style={{padding:'5px 0'}}>
-                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Chat model</div>
-                  {AI_MODELS.map(m=>(
-                    <DItem key={m.id} t={t} onClick={()=>setAiModel(m.id)} active={aiModel===m.id} clr={t.purple} icon={m.id==='default'?'✦':m.id==='gemini-25-pro'?'💎':'⚡'} label={m.name} sub={m.desc}/>
-                  ))}
-                  <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <DItem t={t} onClick={()=>setThinking(x=>!x)} active={thinking} clr={t.purple} icon="💭" label="Deep Thinking" sub="Přesnější, ale pomalejší"/>
-                  {imgMode==='generate_image'&&(<>
-                    <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Obrázky</div>
-                    {IMG_MODELS.map(m=><DItem key={m.id} t={t} onClick={()=>setImgModel(m.id)} active={imgModel===m.id} clr={t.purple} icon="🎨" label={m.name} sub={m.desc}/>)}
-                  </>)}
-                  {imgMode==='web_search'&&(<>
-                    <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Typ hledání</div>
-                    {WEB_SEARCH_TYPES.map(st=><DItem key={st.id} t={t} onClick={()=>setWebSearchType(st.id)} active={webSearchType===st.id} clr={t.green} icon={st.label.split(' ')[0]} label={st.label} sub={st.desc}/>)}
-                  </>)}
-                </div>
-              </Dropdown>
-
-              {/* Active badges */}
-              {imgMode!=='chat'&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:imgMode==='generate_image'?t.purple+'22':t.green+'22',color:imgMode==='generate_image'?t.purple:t.green,fontWeight:600,flexShrink:0}}>
-                {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name}`:imgMode==='web_search'?`🌐 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label}`:'📷 Fotky'}
-              </span>}
-              {toolMode&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:'#06b6d422',color:'#06b6d4',fontWeight:600,flexShrink:0,display:'flex',alignItems:'center',gap:4}}>
-                {TOOL_LABELS[toolMode]||toolMode}
-                <button onClick={()=>setToolMode(null)} style={{color:'#06b6d4',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',fontSize:11}}>{Ic.x}</button>
-              </span>}
-              {imgMode==='generate_image'&&<PollenBadge t={t} imgModel={imgModel} pollenInfo={pollenInfo}/>}
-              {aiModel!=='default'&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,fontWeight:600,flexShrink:0}}>{currentModel?.short}</span>}
-            </div>
-          )}
-
-          {/* Tool Options Panel — zobrazí se pro nástroje s nastavením */}
-          {toolMode&&TOOL_OPTIONS[toolMode]&&(
-            <div style={{marginBottom:7,padding:'9px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease',display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
-              <input
-                value={toolOptions[TOOL_OPTIONS[toolMode].field]||''}
-                onChange={e=>setToolOptions(o=>({...o,[TOOL_OPTIONS[toolMode].field]:e.target.value}))}
-                placeholder={TOOL_OPTIONS[toolMode].placeholder||TOOL_OPTIONS[toolMode].default}
-                style={{flex:1,padding:'4px 9px',background:t.inBg,color:t.txt,border:`1px solid #06b6d444`,borderRadius:6,fontSize:12,outline:'none',fontFamily:'inherit'}}
-              />
-              <span style={{fontSize:10,color:t.muted,flexShrink:0}}>pak napiš text →</span>
-            </div>
-          )}
-
-          {/* Quiz panel */}
           {quizMode&&(
             <div style={{marginBottom:7,padding:'11px',background:t.tag,borderRadius:9,border:`1px solid #f59e0b44`,animation:'dropIn .2s ease'}}>
               <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…" style={{width:'100%',padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:9,boxSizing:'border-box'}}/>
@@ -1508,37 +1405,210 @@ export default function Chat({session}){
             </div>
           )}
 
-          {/* ── GEMINI-STYLE INPUT BOX ─────────────────────────────────────── */}
-          <div style={{background:t.inBg,border:`1.5px solid ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:24,transition:'border-color .2s',padding:'10px 14px'}}>
+          {/* ── CLAUDE-STYLE INPUT BOX ──────────────────────────────────────── */}
+          {/* Tool Options Panel (podmínkový) */}
+          {toolMode&&TOOL_OPTIONS[toolMode]&&(
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,padding:'7px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease'}}>
+              <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
+              <input value={toolOptions[TOOL_OPTIONS[toolMode].field]||''} onChange={e=>setToolOptions(o=>({...o,[TOOL_OPTIONS[toolMode].field]:e.target.value}))}
+                placeholder={TOOL_OPTIONS[toolMode].placeholder} style={{flex:1,padding:'3px 8px',background:t.inBg,color:t.txt,border:`1px solid #06b6d444`,borderRadius:6,fontSize:12,outline:'none',fontFamily:'inherit'}}/>
+              <span style={{fontSize:10,color:t.muted,flexShrink:0,whiteSpace:'nowrap'}}>pak napiš →</span>
+            </div>
+          )}
+
+          {/* Quiz panel */}
+          {quizMode&&(
+            <div style={{marginBottom:7,padding:'11px',background:t.tag,borderRadius:9,border:`1px solid #f59e0b44`,animation:'dropIn .2s ease'}}>
+              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…" style={{width:'100%',padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:8,boxSizing:'border-box'}}/>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <span style={{fontSize:11,color:t.muted}}>Počet:</span>
+                <div style={{display:'flex',gap:3}}>{QUIZ_COUNTS.map(n=><button key={n} onClick={()=>setQuizCount(n)} style={{padding:'3px 7px',borderRadius:5,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:26}}>{n}</button>)}</div>
+                <span style={{fontSize:11,color:t.muted}}>Obtíž:</span>
+                <div style={{display:'flex',gap:3}}>{QUIZ_DIFFS.map(([v,l])=><button key={v} onClick={()=>setQuizDiff(v)} style={{padding:'3px 8px',borderRadius:5,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400}}>{l}</button>)}</div>
+                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'5px 14px',borderRadius:7,background:'#f59e0b',color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto'}}>Start 🎓</button>
+              </div>
+            </div>
+          )}
+
+          {/* Image styles */}
+          {imgMode==='generate_image'&&showImgStyles&&<ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>}
+
+          {/* Bookmarks */}
+          {showBookmarks&&<PromptBookmarks t={t} input={input} onSelect={txt=>{setInput(txt);setShowBookmarks(false);taRef.current?.focus()}}/>}
+
+          {/* Templates */}
+          {showTemplates&&(
+            <div style={{marginBottom:7,background:t.modal,border:`1px solid ${t.border}`,borderRadius:9,overflow:'hidden',animation:'dropIn .2s ease'}}>
+              <div style={{padding:'6px 11px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.muted,fontWeight:600,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                📝 Šablony <button onClick={()=>setShowTemplates(false)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',display:'flex',padding:2}}>{Ic.x}</button>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',maxHeight:240,overflowY:'auto'}}>
+                {TEMPLATES.map(tp=>(
+                  <button key={tp.label} onClick={()=>{setInput(tp.text);setShowTemplates(false);taRef.current?.focus()}} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',background:'transparent',color:t.txt,fontSize:12,textAlign:'left',cursor:'pointer',fontFamily:'inherit',border:'none',transition:'background .1s'}} onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                    <span style={{fontSize:15,flexShrink:0}}>{tp.icon}</span><span style={{color:t.muted,fontSize:12}}>{tp.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Calc */}
+          {showCalc&&<CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>}
+
+          {/* Attachments */}
+          {atts.length>0&&(
+            <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>
+              {atts.map(a=>(
+                <div key={a.id} style={{position:'relative'}}>
+                  {a.preview?<img src={a.preview} alt={a.name} style={{height:44,width:44,objectFit:'cover',borderRadius:6,border:`1px solid ${t.border}`,display:'block'}}/>
+                    :<div style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',background:t.pill,borderRadius:6,fontSize:11,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>}
+                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))} style={{position:'absolute',top:-4,right:-4,width:15,height:15,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer',fontSize:9}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── HLAVNÍ INPUT — Claude.ai style ────────────────────────────── */}
+          <div style={{background:t.inBg,border:`1.5px solid ${toolMode?'#06b6d4':imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:16,transition:'border-color .2s',overflow:'hidden'}}>
+            {/* Active mode/tool pill uvnitř boxu nahoře */}
+            {(imgMode!=='chat'||toolMode||quizMode)&&(
+              <div style={{display:'flex',alignItems:'center',gap:5,padding:'7px 14px 0',flexWrap:'wrap'}}>
+                {toolMode&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:'#06b6d422',color:'#06b6d4',fontWeight:600}}>
+                  {TOOL_LABELS[toolMode]}<button onClick={()=>setToolMode(null)} style={{color:'#06b6d4',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
+                {imgMode!=='chat'&&!toolMode&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:imgMode==='generate_image'?t.purple+'22':imgMode==='web_search'?t.green+'22':'rgba(34,197,94,.15)',color:imgMode==='generate_image'?t.purple:imgMode==='web_search'?t.green:t.green,fontWeight:600}}>
+                  {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name||'AI Obrázek'}`:imgMode==='web_search'?`🌐 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label||'Web'}`:imgMode==='image_search'?'📷 Fotografie':''}
+                  <button onClick={()=>setImgMode('chat')} style={{color:'inherit',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
+                {quizMode&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:'#f59e0b22',color:'#f59e0b',fontWeight:600}}>
+                  🎓 Kvíz<button onClick={()=>setQuizMode(false)} style={{color:'#f59e0b',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
+                {thinking&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:t.purple+'22',color:t.purple,fontWeight:600,animation:'thinkPulse 1.5s infinite'}}>
+                  💭 Deep Thinking<button onClick={()=>setThinking(false)} style={{color:t.purple,background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
+              </div>
+            )}
+
+            {/* Textarea */}
             <textarea ref={taRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey}
-              placeholder={phs[toolMode]||phs[imgMode]} rows={1}
-              style={{width:'100%',fontSize:14,lineHeight:1.5,color:t.txt,caretColor:t.accent,maxHeight:120,overflowY:'auto',display:'block',background:'transparent'}}
-              onInput={e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}}/>
-            {/* Bottom row: + tools, word count, action buttons, send */}
-            <div style={{display:'flex',alignItems:'center',gap:5,marginTop:8}}>
-              {/* + button — otvírá utility tools */}
-              <div style={{position:'relative'}}>
-                <Dropdown t={t} label="" icon={<span style={{fontSize:16,fontWeight:700}}>+</span>} active={showTemplates||showCalc||showBookmarks}>
-                  <div style={{padding:'5px 0'}}>
-                    <DItem t={t} onClick={()=>{setShowTemplates(s=>!s);setShowCalc(false);setShowBookmarks(false)}} active={showTemplates} clr={t.accent} icon="📝" label="Šablony zpráv"/>
+              placeholder={phs[toolMode]||phs[imgMode]||'Zeptat se Lumi…'} rows={1}
+              style={{width:'100%',fontSize:14,lineHeight:1.55,color:t.txt,caretColor:t.accent,maxHeight:200,overflowY:'auto',display:'block',background:'transparent',padding:'12px 14px 4px',border:'none',outline:'none',fontFamily:"'DM Sans','Segoe UI',sans-serif",resize:'none'}}
+              onInput={e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,200)+'px'}}/>
+
+            {/* Bottom bar — + vlevo, voice + model + send vpravo */}
+            <div style={{display:'flex',alignItems:'center',padding:'4px 8px 8px',gap:4}}>
+
+              {/* + button — VŠECHNY nástroje */}
+              <div style={{position:'relative',flexShrink:0}}>
+                <Dropdown t={t} label="" icon={
+                  <div style={{width:30,height:30,borderRadius:8,border:`1px solid ${t.border}`,background:t.btn,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:300,color:t.muted,transition:'all .15s'}}>+</div>
+                } active={showTemplates||showCalc||showBookmarks||imgMode!=='chat'||!!toolMode||quizMode}>
+                  <div style={{padding:'4px 0',maxHeight:480,overflowY:'auto',width:260}}>
+
+                    {/* Soubory & utility */}
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Přílohy</div>
+                    <DItem t={t} onClick={()=>fileRef.current.click()} active={false} clr={t.accent} icon="📎" label="Přidat soubor" sub="Obrázek, PDF, kód…"/>
+                    <DItem t={t} onClick={()=>{setShowBookmarks(s=>!s);setShowTemplates(false);setShowCalc(false)}} active={showBookmarks} clr={t.accent} icon="🔖" label="Záložky promptů" sub="Uložené prompty"/>
+                    <DItem t={t} onClick={()=>{setShowTemplates(s=>!s);setShowCalc(false);setShowBookmarks(false)}} active={showTemplates} clr={t.accent} icon="📝" label="Šablony zpráv" sub="8 předpřipravených šablon"/>
                     <DItem t={t} onClick={()=>{setShowCalc(s=>!s);setShowTemplates(false);setShowBookmarks(false)}} active={showCalc} clr={t.accent} icon="🔢" label="Kalkulačka"/>
-                    <DItem t={t} onClick={()=>{setShowBookmarks(s=>!s);setShowTemplates(false);setShowCalc(false)}} active={showBookmarks} clr={t.accent} icon="🔖" label="Záložky promptů"/>
-                    <DItem t={t} onClick={()=>fileRef.current.click()} active={false} clr={t.accent} icon="📎" label="Přidat soubor"/>
+
+                    {/* Základní módy */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Módy</div>
+                    <DItem t={t} onClick={()=>{setImgMode('web_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="SearXNG · DDG · Google News"/>
+                    <DItem t={t} onClick={()=>{setImgMode('generate_image');setToolMode(null);setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
+                    <DItem t={t} onClick={()=>{setImgMode('image_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
+                    <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz" sub="Interaktivní test"/>
+                    <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
+                    {isLoggedIn&&<DItem t={t} onClick={()=>setShowLive(true)} active={false} clr='#f87171' icon="🔴" label="Live — hlas" sub="STT → AI → TTS"/>}
+
+                    {/* Textové nástroje */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Textové nástroje</div>
+                    {[
+                      ['translate','🌍','Překlad','Do libovolného jazyka'],
+                      ['summarize','📋','Sumarizace','Bullet body / TLDR'],
+                      ['correct','✅','Korektura','Oprava chyb'],
+                      ['rewrite','✏️','Přepis stylu','Formálně, poeticky…'],
+                      ['headlines','📰','Generuj nadpisy','5 variant titulků'],
+                      ['seo','🔍','SEO optimalizace','Meta, klíčová slova'],
+                      ['email','📧','Napsat e-mail','Z popisu hotový mail'],
+                      ['sentiment','😊','Analýza sentimentu','Skóre a emoce'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#06b6d4' icon={icon} label={label} sub={sub}/>
+                    ))}
+
+                    {/* Kód */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Kód & Vývoj</div>
+                    {[
+                      ['refactor','🔧','Refaktoring','Best practices'],
+                      ['gen_tests','🧪','Generuj testy','Unit testy'],
+                      ['convert_code','🔄','Konverze kódu','Python → JS…'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#f97316' icon={icon} label={label} sub={sub}/>
+                    ))}
+
+                    {/* Analýza & Kreativita */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Analýza & Kreativita</div>
+                    {[
+                      ['analyze_doc','📄','Analyzuj dokument','Text nebo PDF paste','#a855f7'],
+                      ['fact_check','🔎','Fact Check','Ověření tvrzení','#a855f7'],
+                      ['brainstorm','💡','Brainstorming','10 kreativních nápadů','#22c55e'],
+                      ['presentation','📊','Tvorba prezentace','Osnova slidů','#22c55e'],
+                      ['roleplay','🎭','Roleplay / Simulace','Pohovor, hraní rolí','#22c55e'],
+                    ].map(([id,icon,label,sub,clr])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr={clr} icon={icon} label={label} sub={sub}/>
+                    ))}
                   </div>
                 </Dropdown>
               </div>
-              {/* Word/char count */}
-              <div style={{flex:1,display:'flex',alignItems:'center',gap:5}}>
+
+              {/* Flex spacer */}
+              <div style={{flex:1,display:'flex',alignItems:'center',gap:5,paddingLeft:2}}>
                 {wordCount>0&&<span style={{fontSize:10,color:t.muted}}>{wordCount} sl</span>}
                 {input.length>100&&<span style={{fontSize:10,color:input.length>1800?t.danger:input.length>1200?'#f59e0b':t.muted}}>{input.length}</span>}
               </div>
+
               {/* Voice */}
               <VoiceBtn t={t} onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
-              {/* Send */}
+
+              {/* Model Picker — pill jako "Sonnet 4.6" */}
+              {isLoggedIn&&(
+                <div style={{position:'relative'}}>
+                  <Dropdown t={t} label="" icon={
+                    <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:8,background:thinking?t.purple+'22':t.btn,border:`1px solid ${thinking?t.purple:t.border}`,color:thinking?t.purple:t.muted,fontSize:11,fontWeight:500,cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}>
+                      {thinking?'💭 Thinking':(currentModel?.short||'G4')} {Ic.chevDn}
+                    </div>
+                  } active={aiModel!=='default'||thinking} accent={t.purple}>
+                    <div style={{padding:'4px 0',width:240}}>
+                      <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Chat model</div>
+                      {AI_MODELS.map(m=>(
+                        <DItem key={m.id} t={t} onClick={()=>setAiModel(m.id)} active={aiModel===m.id} clr={t.purple} icon={m.id==='default'?'✦':m.id==='gemini-25-pro'?'💎':'⚡'} label={m.name} sub={m.desc}/>
+                      ))}
+                      <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                      <DItem t={t} onClick={()=>setThinking(x=>!x)} active={thinking} clr={t.purple} icon="💭" label="Deep Thinking" sub="Přesnější, ale pomalejší"/>
+                      {imgMode==='generate_image'&&<>
+                        <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Obrázky</div>
+                        {IMG_MODELS.map(m=><DItem key={m.id} t={t} onClick={()=>setImgModel(m.id)} active={imgModel===m.id} clr={t.purple} icon="🎨" label={m.name} sub={`${m.desc} · ${m.cost}🌸`}/>)}
+                      </>}
+                      {imgMode==='web_search'&&<>
+                        <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Typ hledání</div>
+                        {WEB_SEARCH_TYPES.map(st=><DItem key={st.id} t={t} onClick={()=>setWebSearchType(st.id)} active={webSearchType===st.id} clr={t.green} icon={st.label.split(' ')[0]} label={st.label} sub={st.desc}/>)}
+                      </>}
+                    </div>
+                  </Dropdown>
+                </div>
+              )}
+
+              {/* SEND button */}
               <button onClick={send} disabled={!canSend}
-                style={{width:36,height:36,borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s ease',transform:canSend?'scale(1)':'scale(.9)',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 3px 12px ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent}55`:'none'}}
-                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.08)'}}
-                onMouseOut={e=>{if(canSend)e.currentTarget.style.transform='scale(1)'}}>
+                style={{width:34,height:34,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:canSend?(toolMode?'#06b6d4':imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent):t.btn,color:canSend?'#fff':t.muted,transition:'all .2s ease',flexShrink:0,border:'none',cursor:canSend?'pointer':'default',boxShadow:canSend?`0 2px 10px ${toolMode?'#06b6d4':imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.accent}55`:'none'}}
+                onMouseOver={e=>{if(canSend)e.currentTarget.style.transform='scale(1.07)'}}
+                onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
                 {Ic.send}
               </button>
             </div>
