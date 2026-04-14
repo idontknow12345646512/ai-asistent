@@ -630,6 +630,8 @@ export default function Chat({session}){
   const[showCalc,setShowCalc]=useState(false)
   const[showBookmarks,setShowBookmarks]=useState(false)
   const[showFocusTimer,setShowFocusTimer]=useState(false)
+  const[toolMode,setToolMode]=useState(null) // null | 'translate' | 'summarize' | 'correct' | 'rewrite' | 'headlines' | 'seo' | 'email' | 'sentiment' | 'refactor' | 'gen_tests' | 'convert_code' | 'analyze_doc' | 'fact_check' | 'brainstorm' | 'presentation' | 'roleplay'
+  const[toolOptions,setToolOptions]=useState({}) // extra params per tool
   const[isDragging,setIsDragging]=useState(false)
   // Conversations
   const[convs,setConvs]=useState([mkLocal()])
@@ -879,8 +881,83 @@ export default function Chat({session}){
     finally{setLoading(false);setQuizMode(false);setQuizTopic('')}
   }
 
+  const TOOL_LABELS={
+    translate:'🌍 Překlad',summarize:'📋 Sumarizace',correct:'✅ Korektura',
+    rewrite:'✏️ Přepis stylu',headlines:'📰 Nadpisy',seo:'🔍 SEO',
+    email:'📧 E-mail',sentiment:'😊 Sentiment',refactor:'🔧 Refaktoring',
+    gen_tests:'🧪 Testy',convert_code:'🔄 Konverze',analyze_doc:'📄 Dokument',
+    fact_check:'🔎 Fact Check',brainstorm:'💡 Brainstorming',
+    presentation:'📊 Prezentace',roleplay:'🎭 Roleplay',
+  }
+
+  // Nástroje tools panel — různé options pro každý tool
+  const TOOL_OPTIONS={
+    translate:{label:'Cílový jazyk',placeholder:'angličtina, němčina, španělština…',field:'targetLang',default:'angličtina'},
+    summarize:{label:'Styl',placeholder:'bullets / tldr / paragraph',field:'style',default:'bullets'},
+    rewrite:{label:'Styl',placeholder:'formal / casual / poetic / simple / technical / funny / academic',field:'style',default:'formal'},
+    refactor:{label:'Jazyk',placeholder:'JavaScript, Python, TypeScript…',field:'lang',default:'JavaScript'},
+    gen_tests:{label:'Jazyk',placeholder:'JavaScript, Python, Java…',field:'lang',default:'JavaScript'},
+    convert_code:{label:'Z → Do',placeholder:'Python → JavaScript',field:'langs',default:'Python → JavaScript'},
+    analyze_doc:{label:'Otázka',placeholder:'O co jde v dokumentu?',field:'question',default:'Shrň hlavní body.'},
+    brainstorm:{label:'Počet nápadů',placeholder:'10',field:'count',default:'10'},
+    presentation:{label:'Počet slidů',placeholder:'8',field:'slides',default:'8'},
+    roleplay:{label:'Scénář / Role',placeholder:'Jsem interviewer, hraj uchazeče o práci',field:'scenario',default:''},
+  }
+
+  // Odeslání tool požadavku
+  const sendTool=useCallback(async(text,tool,opts={})=>{
+    if(!text.trim()||loading||!activeConv)return
+    const cid=activeConv.id,isLocal=activeConv.local
+    const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
+    const tmpUser={id:uid(),role:'user',content:`[${TOOL_LABELS[tool]||tool}] ${text.slice(0,80)}${text.length>80?'…':''}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
+    setInput('');setLoading(true);setErr(null)
+    if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
+    else setMsgs(p=>[...p,tmpUser])
+
+    // Sestav payload dle tool módu
+    let payload={text,mode:tool}
+    if(tool==='translate')payload.targetLang=opts.targetLang||'angličtina'
+    if(tool==='summarize')payload.style=opts.style||'bullets'
+    if(tool==='rewrite')payload.style=opts.style||'formal'
+    if(tool==='refactor'||tool==='gen_tests')payload.lang=opts.lang||'JavaScript'
+    if(tool==='convert_code'){
+      const parts=(opts.langs||'Python → JavaScript').split(/→|->/);
+      payload.fromLang=(parts[0]||'Python').trim();payload.toLang=(parts[1]||'JavaScript').trim()
+    }
+    if(tool==='analyze_doc')payload.question=opts.question||'Shrň hlavní body.'
+    if(tool==='brainstorm'){payload.topic=text;payload.count=Number(opts.count)||10}
+    if(tool==='presentation'){payload.topic=text;payload.slides=Number(opts.slides)||8}
+    if(tool==='roleplay'){payload.scenario=opts.scenario||'asistent';payload.userMsg=text;payload.roleHistory=[]}
+
+    try{
+      const result=await callEdge(tool,payload,tk)
+      const nid=uid()
+      const aMsg={id:nid,role:'assistant',type:'text',content:result.text??'(prázdná odpověď)',created_at:new Date().toISOString()}
+      setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
+      setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,800),8000))
+      addNewAnim(nid)
+      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      else{
+        const uRow=await saveMsg(cid,'user',tmpUser.content)
+        const ar=await saveMsg(cid,'assistant',aMsg.content)
+        if(ar)aMsg.dbId=ar.id
+        await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])
+      }
+    }catch(e){setErr('Chyba nástroje: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(text)}
+    finally{setLoading(false)}
+  },[loading,activeConv,isLoggedIn,token]) // eslint-disable-line
+
   // ── Main send ──────────────────────────────────────────────────────────────
   const send=useCallback(async()=>{
+    // Tool mode — odešle přes speciální API endpoint
+    if(toolMode&&input.trim()){
+      const opts={...toolOptions}
+      // Zkus extrahovat option z input pokud není nastaveno
+      const def=TOOL_OPTIONS[toolMode]
+      if(def&&!opts[def.field])opts[def.field]=def.default
+      return sendTool(input,toolMode,opts)
+    }
     if(imgMode==='generate_image'){sendImg();return}
     if(imgMode==='web_search'){sendWebSearch();return}
     if((!input.trim()&&!atts.length)||loading||!activeConv)return
@@ -965,7 +1042,15 @@ export default function Chat({session}){
     return msg
   }
 
-  const phs={chat:thinking?'💭 Deep Thinking…':'Zeptat se Lumi…',image_search:'📷 Popište co hledáte…',generate_image:'🎨 Popište obrázek…',web_search:'🌐 Hledej na internetu…'}
+  const phs={chat:thinking?'💭 Deep Thinking…':'Zeptat se Lumi…',image_search:'📷 Popište co hledáte…',generate_image:'🎨 Popište obrázek…',web_search:'🌐 Hledej na internetu…',
+    translate:'🌍 Vlož text k přeložení…',summarize:'📋 Vlož text k sumarizaci…',correct:'✅ Vlož text ke korektuře…',
+    rewrite:'✏️ Vlož text k přepsání…',headlines:'📰 Vlož text pro generování nadpisů…',seo:'🔍 Vlož text k SEO optimalizaci…',
+    email:'📧 Popiš e-mail (komu, o čem, tón)…',sentiment:'😊 Vlož text k analýze sentimentu…',
+    refactor:'🔧 Vlož kód k refaktoringu…',gen_tests:'🧪 Vlož kód pro generování testů…',
+    convert_code:'🔄 Vlož kód ke konverzi…',analyze_doc:'📄 Vlož text dokumentu / PDF…',
+    fact_check:'🔎 Vlož tvrzení k ověření…',brainstorm:'💡 Téma pro brainstorming…',
+    presentation:'📊 Téma prezentace…',roleplay:'🎭 Začni roleplay scénář…',
+  }
 
   // ── CSS ────────────────────────────────────────────────────────────────────
   const css=`
@@ -1259,59 +1344,103 @@ export default function Chat({session}){
           {/* Toolbar — pouze přihlášeni — VŠE v dropdownech (Gemini style) */}
           {isLoggedIn&&(
             <div style={{display:'flex',gap:5,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
-
               {/* Live */}
               <button onClick={()=>setShowLive(true)} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 9px',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.3)',animation:'livePulse 2.5s infinite',cursor:'pointer',fontFamily:'inherit'}}>
                 {Ic.live} Live
               </button>
 
-              {/* Nástroje — vše */}
-              <Dropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode}>
-                <div style={{padding:'5px 0'}}>
-                  <DItem t={t} onClick={()=>{setImgMode('chat');setQuizMode(false)}} active={imgMode==='chat'&&!quizMode} clr={t.accent} icon="💬" label="Chat" sub="Gemma 4 31B"/>
-                  <DItem t={t} onClick={()=>{setImgMode('generate_image');setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
-                  <DItem t={t} onClick={()=>{setImgMode('web_search');setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="Google Grounding"/>
-                  <DItem t={t} onClick={()=>{setImgMode('image_search');setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Hledat fotografie" sub="Unsplash / Pixabay"/>
-                  <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat')}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz"/>
+              {/* Nástroje */}
+              <Dropdown t={t} label="Nástroje" icon={Ic.wand} active={imgMode!=='chat'||quizMode||!!toolMode}>
+                <div style={{padding:'5px 0',maxHeight:420,overflowY:'auto'}}>
+                  {/* Základní */}
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Základní</div>
+                  <DItem t={t} onClick={()=>{setImgMode('chat');setQuizMode(false);setToolMode(null)}} active={imgMode==='chat'&&!quizMode&&!toolMode} clr={t.accent} icon="💬" label="Chat" sub="Gemma 4 31B"/>
+                  <DItem t={t} onClick={()=>{setImgMode('web_search');setQuizMode(false);setToolMode(null)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="SearXNG + DDG"/>
+                  <DItem t={t} onClick={()=>{setImgMode('generate_image');setQuizMode(false);setToolMode(null)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
+                  <DItem t={t} onClick={()=>{setImgMode('image_search');setQuizMode(false);setToolMode(null)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
+                  <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz" sub="Interaktivní test"/>
                   <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
+
+                  {/* Textové nástroje */}
+                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Textové nástroje</div>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='translate'?null:'translate')} active={toolMode==='translate'} clr='#06b6d4' icon="🌍" label="Překlad" sub="Přeloží do libovolného jazyka"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='summarize'?null:'summarize')} active={toolMode==='summarize'} clr='#06b6d4' icon="📋" label="Sumarizace" sub="Zkrátí text do klíčových bodů"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='correct'?null:'correct')} active={toolMode==='correct'} clr='#06b6d4' icon="✅" label="Korektura" sub="Opraví chyby v textu"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='rewrite'?null:'rewrite')} active={toolMode==='rewrite'} clr='#06b6d4' icon="✏️" label="Přepis stylu" sub="Formálněji, casualněji, poeticky…"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='headlines'?null:'headlines')} active={toolMode==='headlines'} clr='#06b6d4' icon="📰" label="Generuj nadpisy" sub="5 různých variant titulků"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='seo'?null:'seo')} active={toolMode==='seo'} clr='#06b6d4' icon="🔍" label="SEO optimalizace" sub="Meta title, description, klíčová slova"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='email'?null:'email')} active={toolMode==='email'} clr='#06b6d4' icon="📧" label="Napsat e-mail" sub="Profesionální e-mail dle popisu"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='sentiment'?null:'sentiment')} active={toolMode==='sentiment'} clr='#06b6d4' icon="😊" label="Analýza sentimentu" sub="Jak lidé vnímají text"/>
+
+                  {/* Kódové nástroje */}
+                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Kód & Vývoj</div>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='refactor'?null:'refactor')} active={toolMode==='refactor'} clr='#f97316' icon="🔧" label="Refaktoring" sub="Vyčistí a zlepší kód"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='gen_tests'?null:'gen_tests')} active={toolMode==='gen_tests'} clr='#f97316' icon="🧪" label="Generuj testy" sub="Unit testy pro kód"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='convert_code'?null:'convert_code')} active={toolMode==='convert_code'} clr='#f97316' icon="🔄" label="Konverze kódu" sub="Python → JS, JS → TS…"/>
+
+                  {/* Analýza */}
+                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Analýza & Výzkum</div>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='analyze_doc'?null:'analyze_doc')} active={toolMode==='analyze_doc'} clr='#a855f7' icon="📄" label="Analyzuj dokument" sub="Otázka k dokumentu / PDF textu"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='fact_check'?null:'fact_check')} active={toolMode==='fact_check'} clr='#a855f7' icon="🔎" label="Fact Check" sub="Ověření pravdivosti tvrzení"/>
+
+                  {/* Kreativita */}
+                  <div style={{margin:'4px 11px',borderTop:`1px solid ${t.border}`}}/>
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 3px'}}>Kreativita & Vzdělávání</div>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='brainstorm'?null:'brainstorm')} active={toolMode==='brainstorm'} clr='#22c55e' icon="💡" label="Brainstorming" sub="10 kreativních nápadů"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='presentation'?null:'presentation')} active={toolMode==='presentation'} clr='#22c55e' icon="📊" label="Tvorba prezentace" sub="Osnova slidů k tématu"/>
+                  <DItem t={t} onClick={()=>setToolMode(toolMode==='roleplay'?null:'roleplay')} active={toolMode==='roleplay'} clr='#22c55e' icon="🎭" label="Roleplay / Simulace" sub="Cvičení pohovoru, hraní rolí…"/>
                 </div>
               </Dropdown>
 
               {/* Model */}
               <Dropdown t={t} label="Model" icon={Ic.model} accent={t.purple} active={aiModel!=='default'||thinking}>
                 <div style={{padding:'5px 0'}}>
-                  <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Chat model</div>
+                  <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Chat model</div>
                   {AI_MODELS.map(m=>(
                     <DItem key={m.id} t={t} onClick={()=>setAiModel(m.id)} active={aiModel===m.id} clr={t.purple} icon={m.id==='default'?'✦':m.id==='gemini-25-pro'?'💎':'⚡'} label={m.name} sub={m.desc}/>
                   ))}
                   <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                  <DItem t={t} onClick={()=>setThinking(x=>!x)} active={thinking} clr={t.purple} icon="💭" label="Deep Thinking" sub="Gemini 3.1 / 2.5 Pro — přesnější"/>
-                  {imgMode==='generate_image'&&(
-                    <>
-                      <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Obrázky · Pollinations</div>
-                      {IMG_MODELS.map(m=><DItem key={m.id} t={t} onClick={()=>setImgModel(m.id)} active={imgModel===m.id} clr={t.purple} icon="🎨" label={m.name} sub={m.desc}/>)}
-                    </>
-                  )}
-                  {imgMode==='web_search'&&(
-                    <>
-                      <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
-                      <div style={{fontSize:10,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.07em',padding:'3px 11px 5px'}}>Typ hledání</div>
-                      {WEB_SEARCH_TYPES.map(st=><DItem key={st.id} t={t} onClick={()=>setWebSearchType(st.id)} active={webSearchType===st.id} clr={t.green} icon={st.label.split(' ')[0]} label={st.label} sub={st.desc}/>)}
-                    </>
-                  )}
+                  <DItem t={t} onClick={()=>setThinking(x=>!x)} active={thinking} clr={t.purple} icon="💭" label="Deep Thinking" sub="Přesnější, ale pomalejší"/>
+                  {imgMode==='generate_image'&&(<>
+                    <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Obrázky</div>
+                    {IMG_MODELS.map(m=><DItem key={m.id} t={t} onClick={()=>setImgModel(m.id)} active={imgModel===m.id} clr={t.purple} icon="🎨" label={m.name} sub={m.desc}/>)}
+                  </>)}
+                  {imgMode==='web_search'&&(<>
+                    <div style={{margin:'3px 11px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'3px 11px 5px'}}>Typ hledání</div>
+                    {WEB_SEARCH_TYPES.map(st=><DItem key={st.id} t={t} onClick={()=>setWebSearchType(st.id)} active={webSearchType===st.id} clr={t.green} icon={st.label.split(' ')[0]} label={st.label} sub={st.desc}/>)}
+                  </>)}
                 </div>
               </Dropdown>
 
-              {/* Active mode badge */}
-              {imgMode!=='chat'&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:imgMode==='generate_image'?t.purple+'22':imgMode==='web_search'?t.green+'22':'rgba(34,197,94,.15)',color:imgMode==='generate_image'?t.purple:imgMode==='web_search'?t.green:t.green,fontWeight:600,flexShrink:0}}>
+              {/* Active badges */}
+              {imgMode!=='chat'&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:imgMode==='generate_image'?t.purple+'22':t.green+'22',color:imgMode==='generate_image'?t.purple:t.green,fontWeight:600,flexShrink:0}}>
                 {imgMode==='generate_image'?`🎨 ${IMG_MODELS.find(m=>m.id===imgModel)?.name}`:imgMode==='web_search'?`🌐 ${WEB_SEARCH_TYPES.find(s=>s.id===webSearchType)?.label}`:'📷 Fotky'}
               </span>}
+              {toolMode&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:5,background:'#06b6d422',color:'#06b6d4',fontWeight:600,flexShrink:0,display:'flex',alignItems:'center',gap:4}}>
+                {TOOL_LABELS[toolMode]||toolMode}
+                <button onClick={()=>setToolMode(null)} style={{color:'#06b6d4',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',fontSize:11}}>{Ic.x}</button>
+              </span>}
               {imgMode==='generate_image'&&<PollenBadge t={t} imgModel={imgModel} pollenInfo={pollenInfo}/>}
-
-              {/* Model badge */}
               {aiModel!=='default'&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 7px',borderRadius:4,fontWeight:600,flexShrink:0}}>{currentModel?.short}</span>}
+            </div>
+          )}
+
+          {/* Tool Options Panel — zobrazí se pro nástroje s nastavením */}
+          {toolMode&&TOOL_OPTIONS[toolMode]&&(
+            <div style={{marginBottom:7,padding:'9px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease',display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
+              <input
+                value={toolOptions[TOOL_OPTIONS[toolMode].field]||''}
+                onChange={e=>setToolOptions(o=>({...o,[TOOL_OPTIONS[toolMode].field]:e.target.value}))}
+                placeholder={TOOL_OPTIONS[toolMode].placeholder||TOOL_OPTIONS[toolMode].default}
+                style={{flex:1,padding:'4px 9px',background:t.inBg,color:t.txt,border:`1px solid #06b6d444`,borderRadius:6,fontSize:12,outline:'none',fontFamily:'inherit'}}
+              />
+              <span style={{fontSize:10,color:t.muted,flexShrink:0}}>pak napiš text →</span>
             </div>
           )}
 
@@ -1382,7 +1511,7 @@ export default function Chat({session}){
           {/* ── GEMINI-STYLE INPUT BOX ─────────────────────────────────────── */}
           <div style={{background:t.inBg,border:`1.5px solid ${imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:24,transition:'border-color .2s',padding:'10px 14px'}}>
             <textarea ref={taRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey}
-              placeholder={phs[imgMode]} rows={1}
+              placeholder={phs[toolMode]||phs[imgMode]} rows={1}
               style={{width:'100%',fontSize:14,lineHeight:1.5,color:t.txt,caretColor:t.accent,maxHeight:120,overflowY:'auto',display:'block',background:'transparent'}}
               onInput={e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}}/>
             {/* Bottom row: + tools, word count, action buttons, send */}
