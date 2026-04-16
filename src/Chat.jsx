@@ -302,19 +302,39 @@ const MsgActions=memo(function MsgActions({msg,t,isLoggedIn,token,onExplain,onSt
 })
 
 // ── Dropdown ──────────────────────────────────────────────────────────────────
-function Dropdown({t,label,icon,children,active,accent}){
-  const[open,setOpen]=useState(false),ref=useRef(null)
-  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[])
+function Dropdown({t,label,icon,children,active,accent,upward=true}){
+  const[open,setOpen]=useState(false)
+  const[pos,setPos]=useState({top:0,left:0,width:0})
+  const ref=useRef(null),btnRef=useRef(null)
+  // Close on outside click
+  useEffect(()=>{
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target)&&!btnRef.current?.contains(e.target))setOpen(false)}
+    document.addEventListener('mousedown',h)
+    return()=>document.removeEventListener('mousedown',h)
+  },[])
+  // Compute position when opening — fixed so it escapes overflow:hidden
+  const toggle=()=>{
+    if(!open&&btnRef.current){
+      const r=btnRef.current.getBoundingClientRect()
+      setPos({
+        bottom: upward ? window.innerHeight-r.top+6 : undefined,
+        top: upward ? undefined : r.bottom+6,
+        left: r.left,
+        minWidth: Math.max(r.width, 240),
+      })
+    }
+    setOpen(o=>!o)
+  }
   const clr=accent||t.accent
   return(
-    <div ref={ref} style={{position:'relative'}}>
-      <button onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:8,background:(open||active)?clr+'22':t.btn,color:(open||active)?clr:t.muted,border:`1px solid ${(open||active)?clr:t.border}`,fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s'}}>
-        {icon}{label}{open?Ic.chevUp:Ic.chevDn}
+    <div ref={ref} style={{position:'relative',display:'inline-flex'}}>
+      <button ref={btnRef} onClick={toggle} style={{display:'flex',alignItems:'center',gap:label?5:0,padding: label?'5px 10px':'0',background:(open||active)?clr+'22':'transparent',color:(open||active)?clr:t.muted,border:'none',fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s',borderRadius:8}}>
+        {icon}{label&&<span>{label}</span>}{label&&(open?Ic.chevUp:Ic.chevDn)}
       </button>
       {open&&(
-        <div style={{position:'absolute',bottom:'calc(100% + 8px)',left:0,minWidth:230,background:t.modal,border:`1px solid ${t.border}`,borderRadius:12,padding:5,zIndex:40,boxShadow:'0 12px 40px rgba(0,0,0,.45)',animation:'dropIn .2s ease'}}>
+        <div style={{position:'fixed',bottom:pos.bottom,top:pos.top,left:pos.left,minWidth:pos.minWidth,background:t.modal,border:`1px solid ${t.border}`,borderRadius:12,padding:5,zIndex:9999,boxShadow:'0 12px 40px rgba(0,0,0,.55)',animation:'dropIn .18s ease',maxHeight:'70vh',overflowY:'auto'}}>
           {children}
-          <button onClick={()=>setOpen(false)} style={{position:'absolute',top:5,right:5,color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
+          <button onClick={()=>setOpen(false)} style={{position:'sticky',bottom:0,float:'right',color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer',marginTop:2}}>{Ic.x}</button>
         </div>
       )}
     </div>
@@ -323,8 +343,8 @@ function Dropdown({t,label,icon,children,active,accent}){
 function DItem({t,onClick,active,clr,icon,label,sub}){
   return(
     <button onClick={onClick} style={{width:'100%',display:'flex',alignItems:'center',gap:9,padding:'8px 11px',background:active?clr+'22':'transparent',color:active?clr:t.txt,fontSize:12,fontFamily:'inherit',textAlign:'left',cursor:'pointer',borderRadius:8,border:'none',transition:'all .15s'}}>
-      <span style={{fontSize:15}}>{icon}</span>
-      <div style={{flex:1}}><div style={{fontWeight:active?600:400}}>{label}</div>{sub&&<div style={{fontSize:10,color:t.muted,marginTop:1}}>{sub}</div>}</div>
+      <span style={{fontSize:15,flexShrink:0}}>{icon}</span>
+      <div style={{flex:1,minWidth:0}}><div style={{fontWeight:active?600:400}}>{label}</div>{sub&&<div style={{fontSize:10,color:t.muted,marginTop:1}}>{sub}</div>}</div>
       {active&&<span style={{color:clr,flexShrink:0}}>{Ic.check}</span>}
     </button>
   )
@@ -882,26 +902,46 @@ export default function Chat({session}){
   }
 
   const TOOL_LABELS={
-    translate:'🌍 Překlad',summarize:'📋 Sumarizace',correct:'✅ Korektura',
-    rewrite:'✏️ Přepis stylu',headlines:'📰 Nadpisy',seo:'🔍 SEO',
-    email:'📧 E-mail',sentiment:'😊 Sentiment',refactor:'🔧 Refaktoring',
-    gen_tests:'🧪 Testy',convert_code:'🔄 Konverze',analyze_doc:'📄 Dokument',
-    fact_check:'🔎 Fact Check',brainstorm:'💡 Brainstorming',
-    presentation:'📊 Prezentace',roleplay:'🎭 Roleplay',
+    // Textové
+    write_text:'✍️ Psaní textu',translate:'🌍 Překlad',summarize:'📋 Sumarizace',
+    correct:'✅ Korektura',rewrite:'✏️ Přepis stylu',headlines:'📰 Nadpisy',
+    seo:'🔍 SEO',email:'📧 E-mail',sentiment:'😊 Sentiment',
+    // Kód
+    write_code:'💻 Psaní kódu',debug:'🐛 Debug',explain_code:'🔬 Vysvětli kód',
+    refactor:'🔧 Refaktoring',gen_tests:'🧪 Testy',convert_code:'🔄 Konverze',
+    db_schema:'🗄️ DB & SQL',api_help:'🔌 API integrace',
+    // Multimédia
+    describe_image:'👁️ Popis obrázku',analyze_chart:'📊 Analýza grafu',
+    // Analýza
+    analyze_doc:'📄 Dokument',fact_check:'🔎 Fact Check',
+    data_analysis:'📈 Data analýza',research:'🔬 Výzkum',
+    // Plánování
+    task_plan:'🗺️ Plánování',brainstorm:'💡 Brainstorming',
+    // Vzdělávání
+    tutor:'🎓 Tutoring',presentation:'📊 Prezentace',roleplay:'🎭 Roleplay',
   }
 
-  // Nástroje tools panel — různé options pro každý tool
   const TOOL_OPTIONS={
-    translate:{label:'Cílový jazyk',placeholder:'angličtina, němčina, španělština…',field:'targetLang',default:'angličtina'},
+    write_text:{label:'Typ textu',placeholder:'článek / esej / příběh / scénář / blogpost…',field:'style',default:'článek'},
+    translate:{label:'Cílový jazyk',placeholder:'angličtina, němčina, španělština, japonština…',field:'targetLang',default:'angličtina'},
     summarize:{label:'Styl',placeholder:'bullets / tldr / paragraph',field:'style',default:'bullets'},
     rewrite:{label:'Styl',placeholder:'formal / casual / poetic / simple / technical / funny / academic',field:'style',default:'formal'},
-    refactor:{label:'Jazyk',placeholder:'JavaScript, Python, TypeScript…',field:'lang',default:'JavaScript'},
-    gen_tests:{label:'Jazyk',placeholder:'JavaScript, Python, Java…',field:'lang',default:'JavaScript'},
+    refactor:{label:'Jazyk',placeholder:'JavaScript, Python, TypeScript, Java…',field:'lang',default:'JavaScript'},
+    write_code:{label:'Jazyk',placeholder:'Python, JavaScript, TypeScript, Java, C#…',field:'lang',default:'Python'},
+    debug:{label:'Jazyk',placeholder:'JavaScript, Python, TypeScript…',field:'lang',default:'JavaScript'},
+    explain_code:{label:'Úroveň',placeholder:'začátečník / pokročilý / expert',field:'level',default:'pokročilý'},
+    gen_tests:{label:'Framework',placeholder:'Jest, Pytest, JUnit, Vitest…',field:'lang',default:'Jest'},
     convert_code:{label:'Z → Do',placeholder:'Python → JavaScript',field:'langs',default:'Python → JavaScript'},
-    analyze_doc:{label:'Otázka',placeholder:'O co jde v dokumentu?',field:'question',default:'Shrň hlavní body.'},
+    db_schema:{label:'Typ DB',placeholder:'PostgreSQL, MySQL, SQLite, MongoDB…',field:'lang',default:'PostgreSQL'},
+    api_help:{label:'Typ API',placeholder:'REST, GraphQL, SDK, WebSocket…',field:'style',default:'REST'},
+    analyze_doc:{label:'Otázka',placeholder:'Shrň hlavní body. / O co jde?',field:'question',default:'Shrň hlavní body dokumentu.'},
+    data_analysis:{label:'Co analyzovat',placeholder:'trendy, statistiky, korelace…',field:'style',default:'shrnutí a trendy'},
+    research:{label:'Hloubka',placeholder:'stručná rešerše / detailní studie',field:'style',default:'stručná rešerše'},
     brainstorm:{label:'Počet nápadů',placeholder:'10',field:'count',default:'10'},
     presentation:{label:'Počet slidů',placeholder:'8',field:'slides',default:'8'},
-    roleplay:{label:'Scénář / Role',placeholder:'Jsem interviewer, hraj uchazeče o práci',field:'scenario',default:''},
+    roleplay:{label:'Scénář / Role',placeholder:'Hraj HR manažera, procvičuji pohovor',field:'scenario',default:''},
+    task_plan:{label:'Detailnost',placeholder:'stručný / detailní s milníky',field:'style',default:'detailní s milníky'},
+    tutor:{label:'Úroveň',placeholder:'začátečník / středně pokročilý / expert',field:'level',default:'středně pokročilý'},
   }
 
   // Odeslání tool požadavku
@@ -914,23 +954,56 @@ export default function Chat({session}){
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
     else setMsgs(p=>[...p,tmpUser])
 
-    // Sestav payload dle tool módu
+    // Sestav payload dle tool — nové nástroje jdou jako 'chat' s upraveným system promptem
+    const CHAT_TOOLS=new Set(['write_text','write_code','debug','explain_code','db_schema','api_help','describe_image','analyze_chart','data_analysis','research','task_plan','tutor'])
     let payload={text,mode:tool}
-    if(tool==='translate')payload.targetLang=opts.targetLang||'angličtina'
-    if(tool==='summarize')payload.style=opts.style||'bullets'
-    if(tool==='rewrite')payload.style=opts.style||'formal'
-    if(tool==='refactor'||tool==='gen_tests')payload.lang=opts.lang||'JavaScript'
-    if(tool==='convert_code'){
-      const parts=(opts.langs||'Python → JavaScript').split(/→|->/);
-      payload.fromLang=(parts[0]||'Python').trim();payload.toLang=(parts[1]||'JavaScript').trim()
+
+    if(CHAT_TOOLS.has(tool)){
+      // Tyto nástroje volají chat s upraveným systémovým promptem
+      const chatPrompts={
+        write_text:`Jsi profesionální spisovatel. Napiš ${opts.style||'článek'} na toto téma. Buď kreativní, strukturovaný, používej markdown. Dodej hotový text připravený k publikaci.`,
+        write_code:`Jsi senior ${opts.lang||'Python'} vývojář. Napiš čistý, komentovaný, funkční kód. Přidej příklady použití a vysvětlení.`,
+        debug:`Jsi expert na debugging ${opts.lang||''}. Najdi a oprav všechny chyby v kódu. Vysvětli co bylo špatně a proč. Ukaž opravenou verzi.`,
+        explain_code:`Vysvětli tento kód jako pro ${opts.level||'pokročilého'} vývojáře. Popiš co každá část dělá, proč je to napsané takto, a jaké jsou edge cases.`,
+        db_schema:`Jsi expert na ${opts.lang||'PostgreSQL'}. Navrhni databázové schéma / SQL dotazy pro tento požadavek. Přidej indexy, constraints a vysvětlení.`,
+        api_help:`Jsi expert na ${opts.style||'REST'} API integrace. Pomoz s implementací. Ukaž konkrétní příklady kódu, error handling a best practices.`,
+        describe_image:`Popiš detailně co vidíš na přiloženém obrázku. Zahrň: co je na obrázku, barvy, kompozici, text, grafy nebo tabulky pokud jsou přítomny, a co z toho vyplývá.`,
+        analyze_chart:`Analyzuj tento graf nebo tabulku. Extrahuj klíčová data, trendy, anomálie a závěry. Formátuj jako strukturovanou analýzu.`,
+        data_analysis:`Analyzuj tato data a zjisti: ${opts.style||'shrnutí a trendy'}. Uveď statistiky, vzorce, anomálie a doporučení.`,
+        research:`Proveď ${opts.style||'stručnou rešerši'} na toto téma. Zahrň: klíčové pojmy, stav výzkumu, hlavní zjištění, zdroje k dalšímu studiu.`,
+        task_plan:`Vytvoř ${opts.style||'detailní'} akční plán pro dosažení tohoto cíle. Rozlož ho na konkrétní kroky, přidej milníky, odhadni čas a identifikuj rizika.`,
+        tutor:`Jsi trpělivý tutor. Vysvětli toto téma pro ${opts.level||'středně pokročilého'} studenta. Začni od základů, použij příklady, analogie a zkontroluj porozumění.`,
+      }
+      const sysPmt=chatPrompts[tool]||`Pomož s úkolem: ${tool}`
+      const now=new Date()
+      const days=['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota']
+      payload={
+        mode:'chat',
+        messages:[{role:'user',content:[{type:'text',text}],...(atts.length>0?{content:[...atts.map(a=>({type:'image',source:{type:'base64',media_type:a.type,data:a.data}})),{type:'text',text}]}:{})}],
+        system:sysPmt+`\n\nDnes je ${days[now.getDay()]} ${now.toLocaleDateString('cs-CZ')}.`,
+        preferredModel:aiModel,thinking,memory,
+      }
+    } else {
+      // Původní specialized tools
+      if(tool==='translate')payload.targetLang=opts.targetLang||'angličtina'
+      if(tool==='summarize')payload.style=opts.style||'bullets'
+      if(tool==='rewrite')payload.style=opts.style||'formal'
+      if(tool==='refactor')payload.lang=opts.lang||'JavaScript'
+      if(tool==='gen_tests')payload.lang=opts.lang||'JavaScript'
+      if(tool==='convert_code'){
+        const parts=(opts.langs||'Python → JavaScript').split(/→|->/);
+        payload.fromLang=(parts[0]||'Python').trim();payload.toLang=(parts[1]||'JavaScript').trim()
+      }
+      if(tool==='analyze_doc')payload.question=opts.question||'Shrň hlavní body.'
+      if(tool==='brainstorm'){payload.topic=text;payload.count=Number(opts.count)||10}
+      if(tool==='presentation'){payload.topic=text;payload.slides=Number(opts.slides)||8}
+      if(tool==='roleplay'){payload.scenario=opts.scenario||'asistent';payload.userMsg=text;payload.roleHistory=[]}
+      if(tool==='task_plan'){payload.topic=text;payload.style=opts.style}
+      if(tool==='tutor'){payload.topic=text;payload.level=opts.level}
     }
-    if(tool==='analyze_doc')payload.question=opts.question||'Shrň hlavní body.'
-    if(tool==='brainstorm'){payload.topic=text;payload.count=Number(opts.count)||10}
-    if(tool==='presentation'){payload.topic=text;payload.slides=Number(opts.slides)||8}
-    if(tool==='roleplay'){payload.scenario=opts.scenario||'asistent';payload.userMsg=text;payload.roleHistory=[]}
 
     try{
-      const result=await callEdge(tool,payload,tk)
+      const result=await callEdge(payload.mode||tool,payload,tk)
       const nid=uid()
       const aMsg={id:nid,role:'assistant',type:'text',content:result.text??'(prázdná odpověď)',created_at:new Date().toISOString()}
       setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
@@ -946,7 +1019,7 @@ export default function Chat({session}){
       }
     }catch(e){setErr('Chyba nástroje: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(text)}
     finally{setLoading(false)}
-  },[loading,activeConv,isLoggedIn,token]) // eslint-disable-line
+  },[loading,activeConv,isLoggedIn,token,aiModel,thinking,memory,atts]) // eslint-disable-line
 
   // ── Main send ──────────────────────────────────────────────────────────────
   const send=useCallback(async()=>{
@@ -1042,14 +1115,46 @@ export default function Chat({session}){
     return msg
   }
 
-  const phs={chat:thinking?'💭 Deep Thinking…':'Zeptat se Lumi…',image_search:'📷 Popište co hledáte…',generate_image:'🎨 Popište obrázek…',web_search:'🌐 Hledej na internetu…',
-    translate:'🌍 Vlož text k přeložení…',summarize:'📋 Vlož text k sumarizaci…',correct:'✅ Vlož text ke korektuře…',
-    rewrite:'✏️ Vlož text k přepsání…',headlines:'📰 Vlož text pro generování nadpisů…',seo:'🔍 Vlož text k SEO optimalizaci…',
-    email:'📧 Popiš e-mail (komu, o čem, tón)…',sentiment:'😊 Vlož text k analýze sentimentu…',
-    refactor:'🔧 Vlož kód k refaktoringu…',gen_tests:'🧪 Vlož kód pro generování testů…',
-    convert_code:'🔄 Vlož kód ke konverzi…',analyze_doc:'📄 Vlož text dokumentu / PDF…',
-    fact_check:'🔎 Vlož tvrzení k ověření…',brainstorm:'💡 Téma pro brainstorming…',
-    presentation:'📊 Téma prezentace…',roleplay:'🎭 Začni roleplay scénář…',
+  const phs={
+    // Módy
+    chat:thinking?'💭 Deep Thinking…':'Zeptat se Lumi…',
+    image_search:'📷 Popište co hledáte…',
+    generate_image:'🎨 Popište obrázek…',
+    web_search:'🌐 Hledej na internetu…',
+    // Textové nástroje
+    write_text:'✍️ Téma nebo zadání textu (článek, esej, příběh…)',
+    translate:'🌍 Vlož text k přeložení…',
+    summarize:'📋 Vlož text k sumarizaci…',
+    correct:'✅ Vlož text ke korektuře…',
+    rewrite:'✏️ Vlož text k přepsání stylu…',
+    headlines:'📰 Vlož text pro generování nadpisů…',
+    seo:'🔍 Vlož text k SEO optimalizaci…',
+    email:'📧 Popiš e-mail (komu, o čem, tón)…',
+    sentiment:'😊 Vlož text k analýze sentimentu…',
+    // Kód
+    write_code:'💻 Popiš co má kód dělat…',
+    debug:'🐛 Vlož kód s chybou…',
+    explain_code:'🔬 Vlož kód k vysvětlení…',
+    refactor:'🔧 Vlož kód k refaktoringu…',
+    gen_tests:'🧪 Vlož kód pro generování testů…',
+    convert_code:'🔄 Vlož kód ke konverzi…',
+    db_schema:'🗄️ Popiš co potřebuješ uložit / jaký dotaz…',
+    api_help:'🔌 Popiš API integraci nebo endpoint…',
+    // Multimédia
+    describe_image:'👁️ Nahraj obrázek nebo popiš co chceš analyzovat…',
+    analyze_chart:'📊 Vlož data nebo nahraj graf k analýze…',
+    // Analýza
+    analyze_doc:'📄 Vlož text dokumentu nebo PDF obsahu…',
+    fact_check:'🔎 Vlož tvrzení k ověření…',
+    data_analysis:'📈 Vlož data nebo popiš co analyzovat…',
+    research:'🔬 Téma pro vědecký výzkum / rešerši…',
+    // Plánování
+    task_plan:'🗺️ Popiš cíl nebo projekt k naplánování…',
+    brainstorm:'💡 Téma pro brainstorming…',
+    // Vzdělávání
+    tutor:'🎓 Co chceš vysvětlit nebo se naučit…',
+    presentation:'📊 Téma prezentace…',
+    roleplay:'🎭 Zahaj scénář nebo napiš kontext…',
   }
 
   // ── CSS ────────────────────────────────────────────────────────────────────
@@ -1469,7 +1574,7 @@ export default function Chat({session}){
           )}
 
           {/* ── HLAVNÍ INPUT — Claude.ai style ────────────────────────────── */}
-          <div style={{background:t.inBg,border:`1.5px solid ${toolMode?'#06b6d4':imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:16,transition:'border-color .2s',overflow:'hidden'}}>
+          <div style={{background:t.inBg,border:`1.5px solid ${toolMode?'#06b6d4':imgMode==='generate_image'||thinking?t.purple:imgMode==='web_search'?t.green:t.inBrd}`,borderRadius:16,transition:'border-color .2s'}}>
             {/* Active mode/tool pill uvnitř boxu nahoře */}
             {(imgMode!=='chat'||toolMode||quizMode)&&(
               <div style={{display:'flex',alignItems:'center',gap:5,padding:'7px 14px 0',flexWrap:'wrap'}}>
@@ -1522,45 +1627,89 @@ export default function Chat({session}){
                     <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
                     {isLoggedIn&&<DItem t={t} onClick={()=>setShowLive(true)} active={false} clr='#f87171' icon="🔴" label="Live — hlas" sub="STT → AI → TTS"/>}
 
+
                     {/* Textové nástroje */}
                     <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Textové nástroje</div>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>📝 Textové nástroje</div>
                     {[
+                      ['write_text','✍️','Psaní textů','Článek, esej, příběh, scénář…'],
                       ['translate','🌍','Překlad','Do libovolného jazyka'],
-                      ['summarize','📋','Sumarizace','Bullet body / TLDR'],
-                      ['correct','✅','Korektura','Oprava chyb'],
-                      ['rewrite','✏️','Přepis stylu','Formálně, poeticky…'],
-                      ['headlines','📰','Generuj nadpisy','5 variant titulků'],
-                      ['seo','🔍','SEO optimalizace','Meta, klíčová slova'],
-                      ['email','📧','Napsat e-mail','Z popisu hotový mail'],
-                      ['sentiment','😊','Analýza sentimentu','Skóre a emoce'],
+                      ['summarize','📋','Sumarizace','Bullet body / TLDR / odstavec'],
+                      ['correct','✅','Korektura a gramatika','Oprava chyb v textu'],
+                      ['rewrite','✏️','Přepis stylu','Formálně, poeticky, casualně…'],
+                      ['headlines','📰','Generuj nadpisy','5 různých variant titulků'],
+                      ['seo','🔍','SEO optimalizace','Meta title, description, klíčová slova'],
+                      ['email','📧','Napsat e-mail / zprávu','Z popisu hotový profesionální mail'],
+                      ['sentiment','😊','Analýza sentimentu','Skóre, emoce, klíčové fráze'],
                     ].map(([id,icon,label,sub])=>(
                       <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#06b6d4' icon={icon} label={label} sub={sub}/>
                     ))}
 
                     {/* Kód */}
                     <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Kód & Vývoj</div>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>💻 Kód & Vývoj</div>
                     {[
-                      ['refactor','🔧','Refaktoring','Best practices'],
-                      ['gen_tests','🧪','Generuj testy','Unit testy'],
-                      ['convert_code','🔄','Konverze kódu','Python → JS…'],
+                      ['write_code','💻','Psaní kódu','Jakýkoliv programovací jazyk'],
+                      ['debug','🐛','Debuggování','Najdi a oprav chyby v kódu'],
+                      ['explain_code','🔬','Vysvětli kód','Co kód dělá a proč'],
+                      ['refactor','🔧','Refaktoring','Vyčisti a zlepši existující kód'],
+                      ['gen_tests','🧪','Generuj testy','Unit testy, integrace'],
+                      ['convert_code','🔄','Konverze kódu','Python → JS, JS → TS…'],
+                      ['db_schema','🗄️','DB schémata & SQL','Návrh databáze, SQL dotazy'],
+                      ['api_help','🔌','API integrace','Pomoc s REST, GraphQL, SDK'],
                     ].map(([id,icon,label,sub])=>(
                       <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#f97316' icon={icon} label={label} sub={sub}/>
                     ))}
 
-                    {/* Analýza & Kreativita */}
+                    {/* Multimédia */}
                     <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Analýza & Kreativita</div>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🖼️ Multimédia & Vizuál</div>
+                    <DItem t={t} onClick={()=>{setImgMode('generate_image');setToolMode(null);setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Generování z textového popisu"/>
+                    <DItem t={t} onClick={()=>{setImgMode('image_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
                     {[
-                      ['analyze_doc','📄','Analyzuj dokument','Text nebo PDF paste','#a855f7'],
-                      ['fact_check','🔎','Fact Check','Ověření tvrzení','#a855f7'],
-                      ['brainstorm','💡','Brainstorming','10 kreativních nápadů','#22c55e'],
-                      ['presentation','📊','Tvorba prezentace','Osnova slidů','#22c55e'],
-                      ['roleplay','🎭','Roleplay / Simulace','Pohovor, hraní rolí','#22c55e'],
-                    ].map(([id,icon,label,sub,clr])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr={clr} icon={icon} label={label} sub={sub}/>
+                      ['describe_image','👁️','Popis obrázku','Nahraj obr. — co je na fotce / grafu'],
+                      ['analyze_chart','📊','Analýza grafu / tabulky','Data z grafu nebo tabulky'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr={t.purple} icon={icon} label={label} sub={sub}/>
                     ))}
+                    <DItem t={t} onClick={()=>setShowLive(true)} active={false} clr='#f87171' icon="🎙️" label="STT + TTS — Live hlas" sub="Mluv → AI odpoví → přečte nahlas"/>
+
+                    {/* Analýza & Výzkum */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🔍 Analýza & Výzkum</div>
+                    <DItem t={t} onClick={()=>{setImgMode('web_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="Aktuální informace v reálném čase"/>
+                    {[
+                      ['analyze_doc','📄','Analyzuj dokument','Text nebo PDF — otázky k obsahu'],
+                      ['fact_check','🔎','Fact Check','Ověření pravdivosti tvrzení'],
+                      ['data_analysis','📈','Zpracování dat & statistik','Analýza, trendy, interpretace'],
+                      ['research','🔬','Vědecký výzkum','Rešerše, studie, citace'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#a855f7' icon={icon} label={label} sub={sub}/>
+                    ))}
+
+                    {/* Plánování & Agentní */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🤖 Plánování & Agentní</div>
+                    {[
+                      ['task_plan','🗺️','Plánování úkolů','Rozlož cíl na kroky a akční plán'],
+                      ['brainstorm','💡','Brainstorming','10 kreativních nápadů k tématu'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#22c55e' icon={icon} label={label} sub={sub}/>
+                    ))}
+                    {isLoggedIn&&<DItem t={t} onClick={()=>setShowAddMem(true)} active={false} clr={t.green} icon="🧠" label="Přidat do paměti" sub="Ulož preferenci nebo informaci"/>}
+
+                    {/* Vzdělávání & Kreativita */}
+                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
+                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🎓 Vzdělávání & Kreativita</div>
+                    {[
+                      ['tutor','🎓','Výuka / Tutoring','Vysvětlí cokoliv na tvou úroveň'],
+                      ['presentation','📊','Tvorba prezentace','Osnova slidů s speaker notes'],
+                      ['roleplay','🎭','Roleplay / Simulace','Pohovor, scénář, hraní rolí'],
+                    ].map(([id,icon,label,sub])=>(
+                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#f59e0b' icon={icon} label={label} sub={sub}/>
+                    ))}
+                    <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="📝" label="Generuj kvíz" sub="Interaktivní test na libovolné téma"/>
+                    <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro — soustředění"/>
                   </div>
                 </Dropdown>
               </div>
