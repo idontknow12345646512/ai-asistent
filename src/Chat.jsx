@@ -302,25 +302,28 @@ const MsgActions=memo(function MsgActions({msg,t,isLoggedIn,token,onExplain,onSt
 })
 
 // ── Dropdown ──────────────────────────────────────────────────────────────────
-function Dropdown({t,label,icon,children,active,accent,upward=true}){
+function Dropdown({t,label,icon,children,active,accent,upward=true,alignRight=false}){
   const[open,setOpen]=useState(false)
-  const[pos,setPos]=useState({top:0,left:0,width:0})
+  const[pos,setPos]=useState({})
   const ref=useRef(null),btnRef=useRef(null)
-  // Close on outside click
   useEffect(()=>{
     const h=e=>{if(ref.current&&!ref.current.contains(e.target)&&!btnRef.current?.contains(e.target))setOpen(false)}
     document.addEventListener('mousedown',h)
     return()=>document.removeEventListener('mousedown',h)
   },[])
-  // Compute position when opening — fixed so it escapes overflow:hidden
   const toggle=()=>{
     if(!open&&btnRef.current){
       const r=btnRef.current.getBoundingClientRect()
+      const menuW=260
+      // Zabrání přetečení vpravo
+      const leftPos=alignRight
+        ? Math.max(4, r.right - menuW)   // zarovnání vpravo od tlačítka
+        : Math.min(r.left, window.innerWidth - menuW - 4)
       setPos({
-        bottom: upward ? window.innerHeight-r.top+6 : undefined,
-        top: upward ? undefined : r.bottom+6,
-        left: r.left,
-        minWidth: Math.max(r.width, 240),
+        bottom: upward ? window.innerHeight - r.top + 6 : undefined,
+        top:    upward ? undefined : r.bottom + 6,
+        left:   leftPos,
+        minWidth: menuW,
       })
     }
     setOpen(o=>!o)
@@ -328,11 +331,12 @@ function Dropdown({t,label,icon,children,active,accent,upward=true}){
   const clr=accent||t.accent
   return(
     <div ref={ref} style={{position:'relative',display:'inline-flex'}}>
-      <button ref={btnRef} onClick={toggle} style={{display:'flex',alignItems:'center',gap:label?5:0,padding: label?'5px 10px':'0',background:(open||active)?clr+'22':'transparent',color:(open||active)?clr:t.muted,border:'none',fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s',borderRadius:8}}>
+      <button ref={btnRef} onClick={toggle}
+        style={{display:'flex',alignItems:'center',gap:label?5:0,padding:label?'5px 10px':'0',background:(open||active)?clr+'22':'transparent',color:(open||active)?clr:t.muted,border:'none',fontSize:12,fontWeight:(open||active)?600:400,fontFamily:'inherit',cursor:'pointer',transition:'all .15s',borderRadius:8}}>
         {icon}{label&&<span>{label}</span>}{label&&(open?Ic.chevUp:Ic.chevDn)}
       </button>
       {open&&(
-        <div style={{position:'fixed',bottom:pos.bottom,top:pos.top,left:pos.left,minWidth:pos.minWidth,background:t.modal,border:`1px solid ${t.border}`,borderRadius:12,padding:5,zIndex:9999,boxShadow:'0 12px 40px rgba(0,0,0,.55)',animation:'dropIn .18s ease',maxHeight:'70vh',overflowY:'auto'}}>
+        <div style={{position:'fixed',bottom:pos.bottom,top:pos.top,left:pos.left,minWidth:pos.minWidth,background:t.modal,border:`1px solid ${t.border}`,borderRadius:12,padding:5,zIndex:9999,boxShadow:'0 16px 48px rgba(0,0,0,.6)',animation:'dropIn .18s ease',maxHeight:'75vh',overflowY:'auto'}}>
           {children}
           <button onClick={()=>setOpen(false)} style={{position:'sticky',bottom:0,float:'right',color:t.muted,display:'flex',padding:3,background:'none',border:'none',cursor:'pointer',marginTop:2}}>{Ic.x}</button>
         </div>
@@ -1726,7 +1730,7 @@ export default function Chat({session}){
               {/* Model Picker — pill jako "Sonnet 4.6" */}
               {isLoggedIn&&(
                 <div style={{position:'relative'}}>
-                  <Dropdown t={t} label="" icon={
+                  <Dropdown t={t} label="" alignRight={true} icon={
                     <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:8,background:thinking?t.purple+'22':t.btn,border:`1px solid ${thinking?t.purple:t.border}`,color:thinking?t.purple:t.muted,fontSize:11,fontWeight:500,cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}>
                       {thinking?'💭 Thinking':(currentModel?.short||'G4')} {Ic.chevDn}
                     </div>
