@@ -847,20 +847,55 @@ export default function Chat({session}){
     if(!isLoggedIn){setErr('Pro web search se přihlaste.');return}
     setInput('');setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
+    const tk=await getFreshToken()||ANON
     const tmpUser={id:uid(),role:'user',content:`🌐 ${txt}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
     else setMsgs(p=>[...p,tmpUser])
     try{
-      const tk=await getFreshToken()||ANON
       const result=await callEdge('web_search',{query:txt,searchType:webSearchType},tk)
-      // Persist to sessionStorage
-      try{sessionStorage.setItem('lumi_search',JSON.stringify(result))}catch{}
+      if(!result||result.error)throw new Error(result?.error||'Search selhal')
+
       const nid=uid()
-      const aMsg={id:nid,role:'assistant',type:'web_search',content:`🌐 ${result.results?.length||0} výsledků`,_webData:result,created_at:new Date().toISOString()}
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{await saveMsg(cid,'user',tmpUser.content);await saveMsg(cid,'assistant',aMsg.content);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])}
+      // Uloż výsledky jako JSON do image_url sloupce pro perzistenci přes refresh
+      const webMeta={results:result.results||[],summary:result.summary||'',query:txt,searchType:webSearchType,provider:result.provider||''}
+      const aMsg={id:nid,role:'assistant',type:'web_search',content:`🌐 ${result.results?.length||0} výsledků — "${txt}"`,_webData:webMeta,created_at:new Date().toISOString()}
+
+      // Zobraz výsledky IHNED bez čekání na DB
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
+        // Ulož do DB na pozadí (neblokuje UI)
+        saveMsg(cid,'user',tmpUser.content).catch(()=>{})
+        saveMsg(cid,'assistant',aMsg.content,'web_search',webMeta).catch(()=>{})
+        supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid).then(()=>{})
+      }
       addNewAnim(nid)
-    }catch(e){setErr('Web Search: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(txt)}
+
+      // Pokud existuje AI shrnutí, zobraz ho jako samostatnou textovou zprávu
+      if(result.summary?.trim()){
+        const sid=uid()
+        const sumMsg={id:sid,role:'assistant',type:'text',
+          content:`**Shrnutí výsledků pro „${txt}":**\n\n${result.summary}`,
+          created_at:new Date().toISOString()}
+        setTypingIds(s=>{const n=new Set(s);n.add(sid);return n})
+        setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(sid);return n}),
+          Math.min(result.summary.length*8,6000))
+        addNewAnim(sid)
+        if(isLocal){
+          setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),sumMsg]}))
+        } else {
+          setMsgs(p=>[...p,sumMsg])
+          saveMsg(cid,'assistant',sumMsg.content).catch(()=>{})
+        }
+      }
+
+    }catch(e){
+      setErr('Web Search: '+e.message)
+      if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c))
+      else setMsgs(p=>p.filter(m=>!m._tmp))
+      setInput(txt)
+    }
     finally{setLoading(false)}
   },[input,isLoggedIn,activeConv,webSearchType]) // eslint-disable-line
 
@@ -1088,13 +1123,22 @@ export default function Chat({session}){
         setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,1000),10000))
       }
       addNewAnim(nid)
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{
-        const uRow=await saveMsg(cid,'user',userText)
-        if(aMsg.type==='image_search')await saveMsg(cid,'assistant',aMsg.content,'image_search',aMsg._images)
-        else{const ar=await saveMsg(cid,'assistant',aMsg.content);if(ar)aMsg.dbId=ar.id}
-        await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
-        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])
+      // ✅ Zobraz odpověď IHNED — neulož DB (neblokuje UI)
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
+        // Ulož do DB na pozadí — fire-and-forget, UI nečeká
+        ;(async()=>{
+          try{
+            const uRow=await saveMsg(cid,'user',userText)
+            if(aMsg.type==='image_search')await saveMsg(cid,'assistant',aMsg.content,'image_search',aMsg._images)
+            else await saveMsg(cid,'assistant',aMsg.content)
+            await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+            // Aktualizuj ID z DB
+            if(uRow?.id)setMsgs(p=>p.map(m=>m.id===tmpUser.id?{...m,id:uRow.id}:m))
+          }catch(dbErr){console.warn('DB save failed (non-critical):',dbErr)}
+        })()
       }
     }catch(e){setErr('Chyba: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:prev}:c));else setMsgs(prev);setInput(userText)}
     finally{setLoading(false)}
@@ -1113,6 +1157,8 @@ export default function Chat({session}){
       if(msg.type==='quiz')return{...msg,_quizData:Array.isArray(p)?p:[p]}
       if(msg.type==='generated_image')return{...msg,_imageData:p.imageData,_mimeType:p.mimeType,_prompt:p.prompt,_modelId:p.modelId}
       if(msg.type==='image_search')return{...msg,_images:Array.isArray(p)?p:undefined,_query:msg.content}
+      if(msg.type==='web_search')return{...msg,_webData:{results:p.results||[],summary:p.summary||'',query:p.query||'',searchType:p.searchType||'web',provider:p.provider||''}}
+      if(msg.type==='weather')return{...msg,_weatherData:p}
       if(Array.isArray(p))return{...msg,_images:p,_query:msg.content}
       if(p.imageData)return{...msg,_imageData:p.imageData,_mimeType:p.mimeType,_prompt:p.prompt,_modelId:p.modelId}
     }catch{return msg}}
