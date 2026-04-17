@@ -766,7 +766,25 @@ export default function Chat({session}){
     setMsgs(data??[]);setStarred(new Set((data??[]).filter(m=>m.starred).map(m=>m.id)));setPinnedMsgs(new Set((data??[]).filter(m=>m.pinned).map(m=>m.id)))
   }
   async function createConv(title='Nová konverzace'){const{data}=await supabase.from('conversations').insert({user_id:session.user.id,title}).select('id,title,updated_at,color').single();return data}
-  async function saveMsg(cid,role,content,type='text',meta=null){const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url:meta?JSON.stringify(meta):null}).select('id').single();return data}
+
+  // Uloží zprávu — meta se komprimuje před uložením (base64 bez null bytes)
+  async function saveMsg(cid,role,content,type='text',meta=null){
+    let image_url=null
+    if(meta){
+      try{
+        const raw=JSON.stringify(meta)
+        // Pro velké obrázky (>50KB) uložíme jen metadata bez imageData (šetří DB)
+        if(type==='generated_image'&&meta.imageData&&raw.length>80000){
+          image_url=JSON.stringify({prompt:meta.prompt,mimeType:meta.mimeType,modelId:meta.modelId,_truncated:true})
+        } else {
+          image_url=raw
+        }
+      }catch{image_url=null}
+    }
+    const{data}=await supabase.from('messages').insert({conversation_id:cid,role,content,type,image_url}).select('id').single()
+    return data
+  }
+
   async function newConv(){
     setErr(null);setInput('');setAtts([])
     if(isLoggedIn){const c=await createConv();if(c){setConvs(p=>[{...c,local:false},...p]);setActiveId(c.id);setMsgs([])}}
@@ -779,7 +797,18 @@ export default function Chat({session}){
     setConvs(prev=>{const next=prev.filter(c=>c.id!==id);const list=next.length>0?next:[mkLocal()];if(id===activeId){setActiveId(list[0].id);if(isLoggedIn&&next.length>0)loadMsgs(list[0].id);else setMsgs([])}return list})
   }
   async function renameConv(id,title){if(!title.trim())return;if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',id);setConvs(p=>p.map(c=>c.id===id?{...c,title}:c));setEditId(null)}
-  async function autoTitle(cid,msg){try{const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:msg.slice(0,200)}]}]},token||ANON);if(d.title){if(isLoggedIn)await supabase.from('conversations').update({title:d.title}).eq('id',cid);setConvs(p=>p.map(c=>c.id===cid?{...c,title:d.title}:c))}}catch{}}
+
+  // AutoTitle — volá se AŽ PO AI odpovědi, použije kontext obou zpráv pro lepší název
+  async function autoTitle(cid,context){
+    try{
+      const d=await callEdge('auto_title',{messages:[{role:'user',content:[{type:'text',text:context.slice(0,300)}]}]},token||ANON)
+      if(d.title?.trim()){
+        const title=d.title.trim().replace(/^["']|["']$/g,'') // odstraň uvozovky
+        if(isLoggedIn)await supabase.from('conversations').update({title}).eq('id',cid)
+        setConvs(p=>p.map(c=>c.id===cid?{...c,title}:c))
+      }
+    }catch{}
+  }
   const starMsg=async msg=>{const ns=!starred.has(msg.id);setStarred(p=>{const n=new Set(p);ns?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn)await supabase.from('messages').update({starred:ns}).eq('id',msg.id)}
   const pinMsg=async msg=>{const np=!pinnedMsgs.has(msg.id);setPinnedMsgs(p=>{const n=new Set(p);np?n.add(msg.id):n.delete(msg.id);return n});if(isLoggedIn)await supabase.from('messages').update({pinned:np}).eq('id',msg.id)}
   const exportChat=()=>{
@@ -1107,7 +1136,7 @@ export default function Chat({session}){
     setInput('');setAtts([]);setLoading(true);setErr(null)
     const prev=isLocal?(activeConv.messages??[]):msgs
     if(isLocal)setConvs(p=>p.map(c=>{if(c.id!==cid)return c;const title=isFirst?userText.slice(0,38)+(userText.length>38?'…':''):c.title;return{...c,title,messages:[...(c.messages??[]),tmpUser]}}))
-    else{setMsgs(p=>[...p,tmpUser]);if(isFirst&&activeConv.title==='Nová konverzace')autoTitle(cid,userText)}
+    else setMsgs(p=>[...p,tmpUser])
     try{
       const history=[...prev,tmpUser].map(m=>({role:m.role,content:m.id===tmpUser.id&&api.length>0?api:[{type:'text',text:m.content}]}))
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
@@ -1123,21 +1152,24 @@ export default function Chat({session}){
         setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,1000),10000))
       }
       addNewAnim(nid)
-      // ✅ Zobraz odpověď IHNED — neulož DB (neblokuje UI)
+      // ✅ Zobraz odpověď IHNED
       if(isLocal){
         setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
       } else {
         setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
-        // Ulož do DB na pozadí — fire-and-forget, UI nečeká
+        // Ulož do DB + autoTitle NA POZADÍ — až po zobrazení odpovědi
         ;(async()=>{
           try{
             const uRow=await saveMsg(cid,'user',userText)
             if(aMsg.type==='image_search')await saveMsg(cid,'assistant',aMsg.content,'image_search',aMsg._images)
             else await saveMsg(cid,'assistant',aMsg.content)
             await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
-            // Aktualizuj ID z DB
             if(uRow?.id)setMsgs(p=>p.map(m=>m.id===tmpUser.id?{...m,id:uRow.id}:m))
-          }catch(dbErr){console.warn('DB save failed (non-critical):',dbErr)}
+            // ✅ AutoTitle až PO uložení AI odpovědi — použij obsah odpovědi pro lepší název
+            if(isFirst&&activeConv.title==='Nová konverzace'){
+              autoTitle(cid,userText+' '+aMsg.content.slice(0,100))
+            }
+          }catch(dbErr){console.warn('DB save:',dbErr)}
         })()
       }
     }catch(e){setErr('Chyba: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:prev}:c));else setMsgs(prev);setInput(userText)}
