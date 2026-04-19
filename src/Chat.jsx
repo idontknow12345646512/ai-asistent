@@ -627,6 +627,67 @@ function AddMemoryModal({t,onClose,onSave}){
 // ══════════════════════════════════════════════════════════════════════════════
 // ── MAIN CHAT ─────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
+// ── PlusMenu — 5 hlavních nástrojů + Zobrazit více ────────────────────────────
+function PlusMenu({t,imgMode,setImgMode,toolMode,setToolMode,quizMode,setQuizMode,
+  showBookmarks,setShowBookmarks,showTemplates,setShowTemplates,showCalc,setShowCalc,
+  showFocusTimer,setShowFocusTimer,showLive,showAddMem,isLoggedIn,fileRef}){
+  const[expanded,setExpanded]=useState(false)
+  const setTool=id=>{ setToolMode(toolMode===id?null:id); setImgMode('chat'); setQuizMode(false) }
+  return(
+    <div style={{padding:'4px 0',width:258}}>
+      {/* 5 hlavních */}
+      <DItem t={t} onClick={()=>fileRef.current.click()} active={false} clr={t.accent} icon="📎" label="Přidat soubor" sub="Obrázek, PDF, kód, text…"/>
+      <DItem t={t} onClick={()=>{setImgMode(imgMode==='web_search'?'chat':'web_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="Hledej na internetu"/>
+      <DItem t={t} onClick={()=>{setImgMode(imgMode==='generate_image'?'chat':'generate_image');setToolMode(null);setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Generuj z textu"/>
+      <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz" sub="Interaktivní test"/>
+      {isLoggedIn&&<DItem t={t} onClick={showLive} active={false} clr='#f87171' icon="🔴" label="Live — hlas" sub="STT → AI → TTS"/>}
+
+      {/* Zobrazit více */}
+      <button onClick={()=>setExpanded(e=>!e)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 12px',background:'transparent',color:t.muted,fontSize:12,fontFamily:'inherit',cursor:'pointer',border:'none',borderTop:`1px solid ${t.border}`,marginTop:4}}>
+        <span>{expanded?'▲ Zobrazit méně':'▼ Zobrazit více nástrojů'}</span>
+      </button>
+
+      {expanded&&<>
+        {/* Utility */}
+        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'6px 12px 2px'}}>Utility</div>
+        <DItem t={t} onClick={()=>{setShowBookmarks(s=>!s);setShowTemplates(false);setShowCalc(false)}} active={showBookmarks} clr={t.accent} icon="🔖" label="Záložky promptů" sub="Uložené prompty"/>
+        <DItem t={t} onClick={()=>{setShowTemplates(s=>!s);setShowCalc(false);setShowBookmarks(false)}} active={showTemplates} clr={t.accent} icon="📝" label="Šablony zpráv"/>
+        <DItem t={t} onClick={()=>{setShowCalc(s=>!s);setShowTemplates(false);setShowBookmarks(false)}} active={showCalc} clr={t.accent} icon="🔢" label="Kalkulačka"/>
+        <DItem t={t} onClick={()=>{setImgMode(imgMode==='image_search'?'chat':'image_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
+        <DItem t={t} onClick={()=>setShowFocusTimer(f=>!f)} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
+        {isLoggedIn&&<DItem t={t} onClick={showAddMem} active={false} clr={t.green} icon="🧠" label="Přidat do paměti"/>}
+
+        {/* Textové */}
+        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'6px 12px 2px',borderTop:`1px solid ${t.border}`,marginTop:4}}>📝 Textové nástroje</div>
+        {[['write_text','✍️','Psaní textů'],['translate','🌍','Překlad'],['summarize','📋','Sumarizace'],
+          ['correct','✅','Korektura'],['rewrite','✏️','Přepis stylu'],['headlines','📰','Nadpisy'],
+          ['seo','🔍','SEO'],['email','📧','E-mail'],['sentiment','😊','Analýza sentimentu'],
+        ].map(([id,icon,label])=><DItem key={id} t={t} onClick={()=>setTool(id)} active={toolMode===id} clr='#06b6d4' icon={icon} label={label}/>)}
+
+        {/* Kód */}
+        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'6px 12px 2px',borderTop:`1px solid ${t.border}`,marginTop:4}}>💻 Kód & Vývoj</div>
+        {[['write_code','💻','Psaní kódu'],['debug','🐛','Debuggování'],['explain_code','🔬','Vysvětli kód'],
+          ['refactor','🔧','Refaktoring'],['gen_tests','🧪','Generuj testy'],['convert_code','🔄','Konverze'],
+          ['db_schema','🗄️','DB & SQL'],['api_help','🔌','API integrace'],
+        ].map(([id,icon,label])=><DItem key={id} t={t} onClick={()=>setTool(id)} active={toolMode===id} clr='#f97316' icon={icon} label={label}/>)}
+
+        {/* Analýza */}
+        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'6px 12px 2px',borderTop:`1px solid ${t.border}`,marginTop:4}}>🔍 Analýza & Výzkum</div>
+        {[['analyze_doc','📄','Analyzuj dokument'],['fact_check','🔎','Fact Check'],
+          ['data_analysis','📈','Data analýza'],['research','🔬','Vědecký výzkum'],
+          ['describe_image','👁️','Popis obrázku'],['analyze_chart','📊','Analýza grafu'],
+        ].map(([id,icon,label])=><DItem key={id} t={t} onClick={()=>setTool(id)} active={toolMode===id} clr='#a855f7' icon={icon} label={label}/>)}
+
+        {/* Kreativita */}
+        <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'6px 12px 2px',borderTop:`1px solid ${t.border}`,marginTop:4}}>🎓 Vzdělávání & Kreativita</div>
+        {[['tutor','🎓','Tutoring'],['presentation','📊','Prezentace'],['roleplay','🎭','Roleplay'],
+          ['task_plan','🗺️','Plánování úkolů'],['brainstorm','💡','Brainstorming'],
+        ].map(([id,icon,label])=><DItem key={id} t={t} onClick={()=>setTool(id)} active={toolMode===id} clr='#f59e0b' icon={icon} label={label}/>)}
+      </>}
+    </div>
+  )
+}
+
 export default function Chat({session}){
   const[themeName,setThemeName]=useState(()=>localStorage.getItem('lumi_theme')||'dark')
   const[showAuth,setShowAuth]=useState(false)
@@ -952,20 +1013,37 @@ export default function Chat({session}){
 
   // ── Send: Quiz ─────────────────────────────────────────────────────────────
   const sendQuiz=async()=>{
-    if(!quizTopic.trim())return
+    if(!quizTopic.trim()||loading)return
     setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
+    const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
     const tmp={id:uid(),role:'user',content:`🎓 Kvíz: ${quizTopic}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmp]}))
     else setMsgs(p=>[...p,tmp])
     try{
-      const d=await callEdge('quiz',{topic:quizTopic,difficulty:quizDiff,questionCount:quizCount},token||ANON)
+      const d=await callEdge('quiz',{topic:quizTopic,difficulty:quizDiff,questionCount:quizCount},tk)
+      if(d.error)throw new Error(d.error)
       const qs=d.questions||[];if(!qs.length)throw new Error('Kvíz nemá otázky.')
-      const aMsg={id:uid(),role:'assistant',type:'quiz',content:'🎓 Kvíz',_quizData:qs,created_at:new Date().toISOString()}
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{await saveMsg(cid,'user',tmp.content);await saveMsg(cid,'assistant','🎓 Kvíz','quiz',qs);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmp,_tmp:false},aMsg])}
-      addNewAnim(aMsg.id)
-    }catch(e){setErr('Kvíz: '+e.message)}
+      const nid=uid()
+      const aMsg={id:nid,role:'assistant',type:'quiz',content:'🎓 Kvíz',_quizData:qs,created_at:new Date().toISOString()}
+      // Zobraz IHNED
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmp,_tmp:false},aMsg])
+        // Ulož na pozadí
+        ;(async()=>{try{
+          await saveMsg(cid,'user',tmp.content)
+          await saveMsg(cid,'assistant','🎓 Kvíz','quiz',qs)
+          await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+        }catch(e){console.warn('Quiz DB save:',e)}})()
+      }
+      addNewAnim(nid)
+    }catch(e){
+      setErr('Kvíz: '+e.message)
+      if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c))
+      else setMsgs(p=>p.filter(m=>!m._tmp))
+    }
     finally{setLoading(false);setQuizMode(false);setQuizTopic('')}
   }
 
@@ -1529,71 +1607,6 @@ export default function Chat({session}){
         <div style={{padding:'7px 11px 9px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
 
 
-          {quizMode&&(
-            <div style={{marginBottom:7,padding:'11px',background:t.tag,borderRadius:9,border:`1px solid #f59e0b44`,animation:'dropIn .2s ease'}}>
-              <input value={quizTopic} onChange={e=>setQuizTopic(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendQuiz()} placeholder="Téma kvízu…" style={{width:'100%',padding:'7px 11px',background:t.inBg,color:t.txt,border:`1.5px solid #f59e0b`,borderRadius:7,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:9,boxSizing:'border-box'}}/>
-              <div style={{display:'flex',gap:9,alignItems:'center',flexWrap:'wrap'}}>
-                <div style={{display:'flex',alignItems:'center',gap:5}}>
-                  <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Počet:</span>
-                  <div style={{display:'flex',gap:3}}>{QUIZ_COUNTS.map(n=><button key={n} onClick={()=>setQuizCount(n)} style={{padding:'3px 7px',borderRadius:5,background:quizCount===n?'#f59e0b':t.btn,color:quizCount===n?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizCount===n?700:400,minWidth:26}}>{n}</button>)}</div>
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:5}}>
-                  <span style={{fontSize:12,color:t.muted,flexShrink:0}}>Obtíž:</span>
-                  <div style={{display:'flex',gap:3}}>{QUIZ_DIFFS.map(([v,l])=><button key={v} onClick={()=>setQuizDiff(v)} style={{padding:'3px 8px',borderRadius:5,background:quizDiff===v?'#f59e0b':t.btn,color:quizDiff===v?'#fff':t.muted,fontSize:12,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:quizDiff===v?700:400}}>{l}</button>)}</div>
-                </div>
-                <button onClick={sendQuiz} disabled={!quizTopic.trim()||loading} style={{padding:'5px 14px',borderRadius:7,background:'#f59e0b',color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',opacity:!quizTopic.trim()?0.5:1,marginLeft:'auto'}}>Start 🎓</button>
-              </div>
-            </div>
-          )}
-
-          {/* Image styles */}
-          {imgMode==='generate_image'&&showImgStyles&&<ImageStylePresets t={t} onSelect={s=>setInput(p=>p?p+', '+s:s)}/>}
-
-          {/* Templates panel */}
-          {showTemplates&&(
-            <div style={{marginBottom:7,background:t.modal,border:`1px solid ${t.border}`,borderRadius:9,overflow:'hidden',animation:'dropIn .2s ease'}}>
-              <div style={{padding:'6px 11px',borderBottom:`1px solid ${t.border}`,fontSize:11,color:t.muted,fontWeight:600,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                📝 Šablony
-                <button onClick={()=>setShowTemplates(false)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',display:'flex',padding:2}}>{Ic.x}</button>
-              </div>
-              <div style={{display:'flex',flexDirection:'column',maxHeight:240,overflowY:'auto'}}>
-                {TEMPLATES.map(tp=>(
-                  <button key={tp.label} onClick={()=>{setInput(tp.text);setShowTemplates(false);taRef.current?.focus()}} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',background:'transparent',color:t.txt,fontSize:12,textAlign:'left',cursor:'pointer',fontFamily:'inherit',border:'none',transition:'background .1s'}} onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
-                    <span style={{fontSize:16,flexShrink:0}}>{tp.icon}</span><span style={{color:t.muted,fontSize:12}}>{tp.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Calc widget */}
-          {showCalc&&<CalcWidget t={t} onResult={r=>{setInput(p=>p?p+' '+r:r);setShowCalc(false);taRef.current?.focus()}}/>}
-
-          {/* Bookmarks */}
-          {showBookmarks&&<PromptBookmarks t={t} input={input} onSelect={txt=>{setInput(txt);setShowBookmarks(false);taRef.current?.focus()}}/>}
-
-          {/* Image style toggle inline */}
-          {imgMode==='generate_image'&&(
-            <div style={{display:'flex',gap:5,alignItems:'center',marginBottom:6}}>
-              <button onClick={()=>setShowImgStyles(s=>!s)} style={{padding:'3px 8px',borderRadius:6,background:showImgStyles?t.purple+'22':t.btn,color:showImgStyles?t.purple:t.muted,border:`1px solid ${showImgStyles?t.purple:t.border}`,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .15s'}}>🎨 Styl obrázku</button>
-            </div>
-          )}
-
-          {/* Attachments */}
-          {atts.length>0&&(
-            <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>
-              {atts.map(a=>(
-                <div key={a.id} style={{position:'relative'}}>
-                  {a.preview?<img src={a.preview} alt={a.name} style={{height:44,width:44,objectFit:'cover',borderRadius:6,border:`1px solid ${t.border}`,display:'block'}}/>
-                    :<div style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',background:t.pill,borderRadius:6,fontSize:11,color:t.txt}}>{a.type.includes('pdf')?Ic.pdf:Ic.file}<span style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span></div>}
-                  <button onClick={()=>setAtts(p=>p.filter(x=>x.id!==a.id))} style={{position:'absolute',top:-4,right:-4,width:15,height:15,borderRadius:'50%',background:t.danger,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer',fontSize:9}}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── CLAUDE-STYLE INPUT BOX ──────────────────────────────────────── */}
-          {/* Tool Options Panel (podmínkový) */}
           {toolMode&&TOOL_OPTIONS[toolMode]&&(
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,padding:'7px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease'}}>
               <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
@@ -1685,114 +1698,16 @@ export default function Chat({session}){
             {/* Bottom bar — + vlevo, voice + model + send vpravo */}
             <div style={{display:'flex',alignItems:'center',padding:'4px 8px 8px',gap:4}}>
 
-              {/* + button — VŠECHNY nástroje */}
+              {/* + button — 5 hlavních + Zobrazit více */}
               <div style={{position:'relative',flexShrink:0}}>
                 <Dropdown t={t} label="" icon={
                   <div style={{width:30,height:30,borderRadius:8,border:`1px solid ${t.border}`,background:t.btn,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:300,color:t.muted,transition:'all .15s'}}>+</div>
                 } active={showTemplates||showCalc||showBookmarks||imgMode!=='chat'||!!toolMode||quizMode}>
-                  <div style={{padding:'4px 0',maxHeight:480,overflowY:'auto',width:260}}>
-
-                    {/* Soubory & utility */}
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Přílohy</div>
-                    <DItem t={t} onClick={()=>fileRef.current.click()} active={false} clr={t.accent} icon="📎" label="Přidat soubor" sub="Obrázek, PDF, kód…"/>
-                    <DItem t={t} onClick={()=>{setShowBookmarks(s=>!s);setShowTemplates(false);setShowCalc(false)}} active={showBookmarks} clr={t.accent} icon="🔖" label="Záložky promptů" sub="Uložené prompty"/>
-                    <DItem t={t} onClick={()=>{setShowTemplates(s=>!s);setShowCalc(false);setShowBookmarks(false)}} active={showTemplates} clr={t.accent} icon="📝" label="Šablony zpráv" sub="8 předpřipravených šablon"/>
-                    <DItem t={t} onClick={()=>{setShowCalc(s=>!s);setShowTemplates(false);setShowBookmarks(false)}} active={showCalc} clr={t.accent} icon="🔢" label="Kalkulačka"/>
-
-                    {/* Základní módy */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Módy</div>
-                    <DItem t={t} onClick={()=>{setImgMode('web_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="SearXNG · DDG · Google News"/>
-                    <DItem t={t} onClick={()=>{setImgMode('generate_image');setToolMode(null);setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Pollinations.ai"/>
-                    <DItem t={t} onClick={()=>{setImgMode('image_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
-                    <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="🎓" label="Kvíz" sub="Interaktivní test"/>
-                    <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro"/>
-                    {isLoggedIn&&<DItem t={t} onClick={()=>setShowLive(true)} active={false} clr='#f87171' icon="🔴" label="Live — hlas" sub="STT → AI → TTS"/>}
-
-
-                    {/* Textové nástroje */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>📝 Textové nástroje</div>
-                    {[
-                      ['write_text','✍️','Psaní textů','Článek, esej, příběh, scénář…'],
-                      ['translate','🌍','Překlad','Do libovolného jazyka'],
-                      ['summarize','📋','Sumarizace','Bullet body / TLDR / odstavec'],
-                      ['correct','✅','Korektura a gramatika','Oprava chyb v textu'],
-                      ['rewrite','✏️','Přepis stylu','Formálně, poeticky, casualně…'],
-                      ['headlines','📰','Generuj nadpisy','5 různých variant titulků'],
-                      ['seo','🔍','SEO optimalizace','Meta title, description, klíčová slova'],
-                      ['email','📧','Napsat e-mail / zprávu','Z popisu hotový profesionální mail'],
-                      ['sentiment','😊','Analýza sentimentu','Skóre, emoce, klíčové fráze'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#06b6d4' icon={icon} label={label} sub={sub}/>
-                    ))}
-
-                    {/* Kód */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>💻 Kód & Vývoj</div>
-                    {[
-                      ['write_code','💻','Psaní kódu','Jakýkoliv programovací jazyk'],
-                      ['debug','🐛','Debuggování','Najdi a oprav chyby v kódu'],
-                      ['explain_code','🔬','Vysvětli kód','Co kód dělá a proč'],
-                      ['refactor','🔧','Refaktoring','Vyčisti a zlepši existující kód'],
-                      ['gen_tests','🧪','Generuj testy','Unit testy, integrace'],
-                      ['convert_code','🔄','Konverze kódu','Python → JS, JS → TS…'],
-                      ['db_schema','🗄️','DB schémata & SQL','Návrh databáze, SQL dotazy'],
-                      ['api_help','🔌','API integrace','Pomoc s REST, GraphQL, SDK'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#f97316' icon={icon} label={label} sub={sub}/>
-                    ))}
-
-                    {/* Multimédia */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🖼️ Multimédia & Vizuál</div>
-                    <DItem t={t} onClick={()=>{setImgMode('generate_image');setToolMode(null);setQuizMode(false)}} active={imgMode==='generate_image'} clr={t.purple} icon="🎨" label="AI Obrázek" sub="Generování z textového popisu"/>
-                    <DItem t={t} onClick={()=>{setImgMode('image_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='image_search'} clr={t.accent} icon="📷" label="Fotografie" sub="Unsplash / Pixabay"/>
-                    {[
-                      ['describe_image','👁️','Popis obrázku','Nahraj obr. — co je na fotce / grafu'],
-                      ['analyze_chart','📊','Analýza grafu / tabulky','Data z grafu nebo tabulky'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr={t.purple} icon={icon} label={label} sub={sub}/>
-                    ))}
-                    <DItem t={t} onClick={()=>setShowLive(true)} active={false} clr='#f87171' icon="🎙️" label="STT + TTS — Live hlas" sub="Mluv → AI odpoví → přečte nahlas"/>
-
-                    {/* Analýza & Výzkum */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🔍 Analýza & Výzkum</div>
-                    <DItem t={t} onClick={()=>{setImgMode('web_search');setToolMode(null);setQuizMode(false)}} active={imgMode==='web_search'} clr={t.green} icon="🌐" label="Web Search" sub="Aktuální informace v reálném čase"/>
-                    {[
-                      ['analyze_doc','📄','Analyzuj dokument','Text nebo PDF — otázky k obsahu'],
-                      ['fact_check','🔎','Fact Check','Ověření pravdivosti tvrzení'],
-                      ['data_analysis','📈','Zpracování dat & statistik','Analýza, trendy, interpretace'],
-                      ['research','🔬','Vědecký výzkum','Rešerše, studie, citace'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#a855f7' icon={icon} label={label} sub={sub}/>
-                    ))}
-
-                    {/* Plánování & Agentní */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🤖 Plánování & Agentní</div>
-                    {[
-                      ['task_plan','🗺️','Plánování úkolů','Rozlož cíl na kroky a akční plán'],
-                      ['brainstorm','💡','Brainstorming','10 kreativních nápadů k tématu'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#22c55e' icon={icon} label={label} sub={sub}/>
-                    ))}
-                    {isLoggedIn&&<DItem t={t} onClick={()=>setShowAddMem(true)} active={false} clr={t.green} icon="🧠" label="Přidat do paměti" sub="Ulož preferenci nebo informaci"/>}
-
-                    {/* Vzdělávání & Kreativita */}
-                    <div style={{margin:'4px 12px',borderTop:`1px solid ${t.border}`}}/>
-                    <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>🎓 Vzdělávání & Kreativita</div>
-                    {[
-                      ['tutor','🎓','Výuka / Tutoring','Vysvětlí cokoliv na tvou úroveň'],
-                      ['presentation','📊','Tvorba prezentace','Osnova slidů s speaker notes'],
-                      ['roleplay','🎭','Roleplay / Simulace','Pohovor, scénář, hraní rolí'],
-                    ].map(([id,icon,label,sub])=>(
-                      <DItem key={id} t={t} onClick={()=>{setToolMode(toolMode===id?null:id);setImgMode('chat');setQuizMode(false)}} active={toolMode===id} clr='#f59e0b' icon={icon} label={label} sub={sub}/>
-                    ))}
-                    <DItem t={t} onClick={()=>{setQuizMode(m=>!m);if(!quizMode)setImgMode('chat');setToolMode(null)}} active={quizMode} clr='#f59e0b' icon="📝" label="Generuj kvíz" sub="Interaktivní test na libovolné téma"/>
-                    <DItem t={t} onClick={()=>{setShowFocusTimer(f=>!f)}} active={showFocusTimer} clr={t.accent} icon="⏱" label="Focus Timer" sub="Pomodoro — soustředění"/>
-                  </div>
+                  <PlusMenu t={t} imgMode={imgMode} setImgMode={setImgMode} toolMode={toolMode} setToolMode={setToolMode}
+                    quizMode={quizMode} setQuizMode={setQuizMode} showBookmarks={showBookmarks} setShowBookmarks={setShowBookmarks}
+                    showTemplates={showTemplates} setShowTemplates={setShowTemplates} showCalc={showCalc} setShowCalc={setShowCalc}
+                    showFocusTimer={showFocusTimer} setShowFocusTimer={setShowFocusTimer} showLive={()=>setShowLive(true)}
+                    showAddMem={()=>setShowAddMem(true)} isLoggedIn={isLoggedIn} fileRef={fileRef}/>
                 </Dropdown>
               </div>
 
