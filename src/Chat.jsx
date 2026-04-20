@@ -169,19 +169,49 @@ const WebSearchResults=memo(function WebSearchResults({data,t}){
 // ── GenImg ────────────────────────────────────────────────────────────────────
 const GenImg=memo(function GenImg({imageData,mimeType,prompt,modelId,t}){
   const[loaded,setLoaded]=useState(false),[prog,setProg]=useState(0)
-  const src=`data:${mimeType||'image/jpeg'};base64,${imageData}`
   const modelName=IMG_MODELS.find(m=>m.id===modelId)?.name||'Pollinations'
+
+  // Pokud nemáme imageData (obrázek nebyl uložen v DB — jen metadata)
+  if(!imageData){
+    return(
+      <div>
+        <div style={{fontSize:11,color:t.muted,marginBottom:7,display:'flex',alignItems:'center',gap:5}}>{Ic.magic} Pollinations · <strong style={{color:t.purple}}>{modelName}</strong></div>
+        <div style={{padding:'14px',background:t.tag,borderRadius:12,border:`1px solid ${t.border}`,fontSize:13,color:t.muted,textAlign:'center'}}>
+          🎨 Obrázek není k dispozici po obnovení stránky<br/>
+          <span style={{fontSize:11}}>{prompt&&`„${prompt}"`}</span>
+        </div>
+      </div>
+    )
+  }
+
+  const src=`data:${mimeType||'image/jpeg'};base64,${imageData}`
   const dl=()=>{const a=document.createElement('a');a.href=src;a.download=`lumi-${Date.now()}.jpg`;a.click()}
-  useEffect(()=>{if(loaded)return;const id=setInterval(()=>setProg(p=>p>=85?85:p+Math.random()*8),400);return()=>clearInterval(id)},[loaded])
+
+  // Plynulý progress — zastaví se na 90% dokud obrázek nenačte
+  useEffect(()=>{
+    if(loaded)return
+    let p=0
+    const id=setInterval(()=>{
+      p=p<88?p+Math.random()*7:88  // max 88% dokud nenačte
+      setProg(Math.min(p,88))
+    },500)
+    return()=>clearInterval(id)
+  },[loaded])
   useEffect(()=>{if(loaded)setProg(100)},[loaded])
+
   return(
     <div>
       <div style={{fontSize:11,color:t.muted,marginBottom:7,display:'flex',alignItems:'center',gap:5}}>{Ic.magic} Pollinations · <strong style={{color:t.purple}}>{modelName}</strong></div>
       {!loaded&&(
         <div style={{width:300,maxWidth:'100%',borderRadius:12,overflow:'hidden',border:`1px solid ${t.border}`}}>
           <div className="shimmer" style={{height:260}}/>
-          <div style={{height:3,background:t.btn}}><div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${prog}%`,transition:'width .4s'}}/></div>
-          <div style={{padding:'7px 11px',display:'flex',alignItems:'center',gap:7}}><div className="dot"><span/><span/><span/></div><span style={{fontSize:11,color:t.muted}}>Generuji…</span></div>
+          <div style={{height:3,background:t.btn}}>
+            <div style={{height:'100%',background:`linear-gradient(90deg,${t.gradA},${t.gradB})`,width:`${prog}%`,transition:'width .5s ease'}}/>
+          </div>
+          <div style={{padding:'7px 11px',display:'flex',alignItems:'center',gap:7}}>
+            <div className="dot"><span/><span/><span/></div>
+            <span style={{fontSize:11,color:t.muted}}>{prog<88?'Generuji…':'Skoro hotovo…'}</span>
+          </div>
         </div>
       )}
       <div style={{position:'relative',display:loaded?'inline-block':'none',maxWidth:'100%'}}>
@@ -627,6 +657,96 @@ function AddMemoryModal({t,onClose,onSave}){
 // ══════════════════════════════════════════════════════════════════════════════
 // ── MAIN CHAT ─────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
+// ── GoalsModal — Sledování cílů (nápad 19) ────────────────────────────────────
+function GoalsModal({t,token,onClose,callEdge}){
+  const[goals,setGoals]=useState([])
+  const[loading,setLoading]=useState(true)
+  const[adding,setAdding]=useState(false)
+  const[newTitle,setNewTitle]=useState('')
+  const[newDesc,setNewDesc]=useState('')
+  const[newDue,setNewDue]=useState('')
+
+  useEffect(()=>{
+    callEdge('get_goals',{},token).then(d=>{setGoals(d.goals||[]);setLoading(false)}).catch(()=>setLoading(false))
+  },[]) // eslint-disable-line
+
+  const addGoal=async()=>{
+    if(!newTitle.trim())return
+    await callEdge('save_goal',{title:newTitle,description:newDesc,due_date:newDue||null},token)
+    setNewTitle('');setNewDesc('');setNewDue('');setAdding(false)
+    const d=await callEdge('get_goals',{},token)
+    setGoals(d.goals||[])
+  }
+
+  const updateProgress=async(id,progress)=>{
+    setGoals(p=>p.map(g=>g.id===id?{...g,progress}:g))
+    await callEdge('update_goal_progress',{goal_id:id,progress},token)
+  }
+
+  const statusColor={active:t.accent,completed:t.green,paused:t.muted}
+  const statusLabel={active:'Aktivní',completed:'Splněno ✓',paused:'Pozastaveno'}
+
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:70,backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(540px,96vw)',maxHeight:'85vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .25s ease',overflow:'hidden'}}>
+        <div style={{padding:'18px 20px 14px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+          <div style={{fontWeight:700,fontSize:16,color:t.txt}}>🎯 Moje cíle</div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setAdding(a=>!a)} style={{padding:'5px 12px',borderRadius:8,background:t.accent,color:'#fff',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit'}}>+ Přidat cíl</button>
+            <button onClick={onClose} style={{padding:'5px 10px',borderRadius:8,background:t.btn,color:t.muted,fontSize:12,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+          </div>
+        </div>
+
+        {adding&&(
+          <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.active,flexShrink:0}}>
+            <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="Název cíle…"
+              style={{width:'100%',padding:'8px 11px',background:t.inBg,color:t.txt,border:`1.5px solid ${t.accent}`,borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',marginBottom:7,boxSizing:'border-box'}}/>
+            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="Popis (volitelný)…"
+              style={{width:'100%',padding:'7px 11px',background:t.inBg,color:t.txt,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',fontFamily:'inherit',marginBottom:7,boxSizing:'border-box'}}/>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <input type="date" value={newDue} onChange={e=>setNewDue(e.target.value)}
+                style={{flex:1,padding:'7px 10px',background:t.inBg,color:t.txt,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,outline:'none',fontFamily:'inherit'}}/>
+              <button onClick={addGoal} disabled={!newTitle.trim()}
+                style={{padding:'7px 16px',borderRadius:8,background:newTitle.trim()?t.accent:t.btn,color:newTitle.trim()?'#fff':t.muted,fontSize:12,fontWeight:600,border:'none',cursor:newTitle.trim()?'pointer':'default',fontFamily:'inherit'}}>
+                Uložit
+              </button>
+              <button onClick={()=>setAdding(false)} style={{padding:'7px 10px',borderRadius:8,background:t.btn,color:t.muted,fontSize:12,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>Zrušit</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{flex:1,overflowY:'auto',padding:'12px 20px'}}>
+          {loading&&<div style={{textAlign:'center',color:t.muted,padding:20}}>Načítám…</div>}
+          {!loading&&!goals.length&&<div style={{textAlign:'center',color:t.muted,padding:20}}>Zatím žádné cíle. Přidej první! 🎯</div>}
+          {goals.map(g=>(
+            <div key={g.id} style={{marginBottom:12,padding:'12px',background:t.aiB,borderRadius:12,border:`1px solid ${t.border}`}}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14,color:t.txt}}>{g.title}</div>
+                  {g.description&&<div style={{fontSize:12,color:t.muted,marginTop:2}}>{g.description}</div>}
+                  {g.due_date&&<div style={{fontSize:11,color:t.muted,marginTop:2}}>📅 Termín: {new Date(g.due_date).toLocaleDateString('cs-CZ')}</div>}
+                </div>
+                <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,background:(statusColor[g.status]||t.muted)+'22',color:statusColor[g.status]||t.muted,fontWeight:600,flexShrink:0,marginLeft:8}}>
+                  {statusLabel[g.status]||g.status}
+                </span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div style={{flex:1,height:6,background:t.btn,borderRadius:3,overflow:'hidden'}}>
+                  <div style={{height:'100%',width:`${g.progress||0}%`,background:`linear-gradient(90deg,${t.accent},${t.purple})`,borderRadius:3,transition:'width .3s'}}/>
+                </div>
+                <span style={{fontSize:11,color:t.muted,minWidth:32}}>{g.progress||0}%</span>
+                <input type="range" min={0} max={100} value={g.progress||0}
+                  onChange={e=>updateProgress(g.id,Number(e.target.value))}
+                  style={{width:80,accentColor:t.accent,cursor:'pointer'}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── PlusMenu — 5 hlavních nástrojů + Zobrazit více ────────────────────────────
 function PlusMenu({t,imgMode,setImgMode,toolMode,setToolMode,quizMode,setQuizMode,
   showBookmarks,setShowBookmarks,showTemplates,setShowTemplates,showCalc,setShowCalc,
@@ -694,6 +814,9 @@ export default function Chat({session}){
   const[showSet,setShowSet]=useState(false)
   const[showLive,setShowLive]=useState(false)
   const[showAddMem,setShowAddMem]=useState(false)
+  const[showGoals,setShowGoals]=useState(false)
+  const[shareSlug,setShareSlug]=useState('')    // pro sdílení konverzace
+  const[showShareModal,setShowShareModal]=useState(false)
   const[cookies,setCookies]=useState(()=>localStorage.getItem('lumi_cookies')==='1')
   const[sysPmt,setSysPmt]=useState(()=>localStorage.getItem('lumi_sys')||SYS_DEFAULT)
   const[aiModel,setAiModel]=useState(()=>localStorage.getItem('lumi_model')||'default')
@@ -898,6 +1021,19 @@ export default function Chat({session}){
   },[isLoggedIn,token])
 
   const addMemoryManual=async(content,cat)=>{if(!isLoggedIn||!content)return;try{await callEdge('save_memory',{content,category:cat,source:'manual'},token)}catch{}}
+
+  // Sdílení konverzace (nápad 2)
+  const shareConversation=async()=>{
+    if(!activeConv||!isLoggedIn)return
+    try{
+      const tk=await getFreshToken()||ANON
+      const d=await callEdge('share_conversation',{conv_id:activeConv.id},tk)
+      if(d.slug){
+        setShareSlug(d.slug)
+        setShowShareModal(true)
+      }
+    }catch(e){setErr('Sdílení: '+e.message)}
+  }
   const explainMsg=async msg=>{setExplainTxt('Načítám…');try{const d=await callEdge('explain',{messages:[{role:'assistant',content:msg.content}]},token||ANON);setExplainTxt(d.explanation||'Nepodařilo se.')}catch(e){setExplainTxt('Chyba: '+e.message)}}
   const parsePollenErr=msg=>{if(msg.startsWith('POLLEN_LIMIT:')){const[,spent,,wait,cost,resetAt]=msg.split(':');return{type:'limit',spent:Number(spent),wait:Number(wait),cost:Number(cost),resetAt:resetAt||null}}; if(msg.startsWith('POLLEN_BALANCE:'))return{type:'balance',wait:Number(msg.split(':')[1])||30};return null}
 
@@ -907,17 +1043,38 @@ export default function Chat({session}){
     if(!isLoggedIn){setErr('Pro generování obrázků se přihlaste.');return}
     setInput('');setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
+    const tk=await getFreshToken()||ANON
     const tmpUser={id:uid(),role:'user',content:txt,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
     else setMsgs(p=>[...p,tmpUser])
     try{
-      const tk=await getFreshToken()||ANON
       const result=await callEdge('generate_image',{messages:[{role:'user',content:txt}],imgModel},tk)
+      if(result.error)throw new Error(result.error)
       if(result.pollenSpent!==undefined){const ps={remaining:result.pollenRemaining??0,spent:result.pollenSpent,resetAt:result.pollenResetAt||null};setPollenInfo(ps);setPollenCache(ps)}
       const nid=uid()
-      const aMsg={id:nid,role:'assistant',type:'generated_image',content:'🎨 Vygenerovaný obrázek',_imageData:result.imageData,_mimeType:result.mimeType,_prompt:result.prompt||txt,_modelId:imgModel,image_url:JSON.stringify({imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel}),created_at:new Date().toISOString()}
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{const uRow=await saveMsg(cid,'user',txt);await saveMsg(cid,'assistant','🎨 Vygenerovaný obrázek','generated_image',{imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel});await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])}
+      const imgMeta={prompt:result.prompt||txt,modelId:imgModel,mimeType:result.mimeType}
+      const aMsg={id:nid,role:'assistant',type:'generated_image',content:'🎨 Vygenerovaný obrázek',
+        _imageData:result.imageData,_mimeType:result.mimeType,_prompt:result.prompt||txt,_modelId:imgModel,
+        // image_url ukládá jen metadata bez base64 (šetří výkon při render)
+        image_url:JSON.stringify(imgMeta),
+        _fullData:result.imageData, // runtime only, neperzistuje
+        created_at:new Date().toISOString()}
+
+      // Zobraz IHNED — neblokuj na DB
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
+        // DB na pozadí — base64 může být velký, uložíme async
+        ;(async()=>{try{
+          const uRow=await saveMsg(cid,'user',txt)
+          // Uložíme plná data do DB (async)
+          await saveMsg(cid,'assistant','🎨 Vygenerovaný obrázek','generated_image',
+            {imageData:result.imageData,mimeType:result.mimeType,prompt:result.prompt||txt,modelId:imgModel})
+          await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+          if(uRow?.id)setMsgs(p=>p.map(m=>m.id===tmpUser.id?{...m,id:uRow.id}:m))
+        }catch(dbErr){console.warn('Img DB save:',dbErr)}})()
+      }
       addNewAnim(nid)
     }catch(e){
       const pe=parsePollenErr(e.message)
@@ -1169,10 +1326,22 @@ export default function Chat({session}){
 
   // ── Main send ──────────────────────────────────────────────────────────────
   const send=useCallback(async()=>{
+    // Slash commands — /web, /img, /kviz, /share, /goal
+    if(input.trim().startsWith('/')){
+      const raw=input.trim()
+      const cmd=raw.slice(1).split(' ')[0].toLowerCase()
+      const rest=raw.slice(cmd.length+2).trim()
+      if(cmd==='web'||cmd==='search'){setInput(rest||input.slice(cmd.length+2));setImgMode('web_search');if(rest){setTimeout(()=>sendWebSearch(rest),50);}return}
+      if(cmd==='img'||cmd==='image'||cmd==='obr'){setInput(rest||'');setImgMode('generate_image');if(rest){setTimeout(()=>sendImg(rest),50);}return}
+      if(cmd==='kviz'||cmd==='quiz'){setInput('');setQuizMode(true);if(rest)setQuizTopic(rest);return}
+      if(cmd==='share'&&isLoggedIn){shareConversation();return}
+      if(cmd==='goal'&&isLoggedIn){setShowGoals(true);return}
+      if(cmd==='live'){setShowLive(true);setInput('');return}
+      // Neznámý slash příkaz — odešli jako normální text
+    }
     // Tool mode — odešle přes speciální API endpoint
     if(toolMode&&input.trim()){
       const opts={...toolOptions}
-      // Zkus extrahovat option z input pokud není nastaveno
       const def=TOOL_OPTIONS[toolMode]
       if(def&&!opts[def.field])opts[def.field]=def.default
       return sendTool(input,toolMode,opts)
@@ -1252,7 +1421,7 @@ export default function Chat({session}){
       }
     }catch(e){setErr('Chyba: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:prev}:c));else setMsgs(prev);setInput(userText)}
     finally{setLoading(false)}
-  },[input,atts,loading,activeConv,msgs,isLoggedIn,imgMode,sysPmt,thinking,memory,token,imgModel,aiModel,webSearchType,tryAutoMemory]) // eslint-disable-line
+  },[input,atts,loading,activeConv,msgs,isLoggedIn,imgMode,sysPmt,thinking,memory,token,imgModel,aiModel,webSearchType,tryAutoMemory,shareConversation,setQuizMode,setQuizTopic,setShowGoals,setShowLive,sendImg,sendWebSearch]) // eslint-disable-line
 
   const onKey=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
   const displayMsgs=showStarred?(activeConv?.local?(activeConv.messages??[]):msgs).filter(m=>starred.has(m.id)):(activeConv?.local?(activeConv.messages??[]):msgs)
@@ -1265,7 +1434,14 @@ export default function Chat({session}){
     if(msg.image_url){try{
       const p=JSON.parse(msg.image_url)
       if(msg.type==='quiz')return{...msg,_quizData:Array.isArray(p)?p:[p]}
-      if(msg.type==='generated_image')return{...msg,_imageData:p.imageData,_mimeType:p.mimeType,_prompt:p.prompt,_modelId:p.modelId}
+      if(msg.type==='generated_image'){
+        // p._truncated = uložené jen metadata bez base64 (viz saveMsg komprese)
+        // V tom případě nemáme imageData, zobrazíme placeholder
+        if(p._truncated)return{...msg,_prompt:p.prompt,_modelId:p.modelId,_mimeType:p.mimeType,_imageData:null}
+        if(p.imageData)return{...msg,_imageData:p.imageData,_mimeType:p.mimeType,_prompt:p.prompt,_modelId:p.modelId}
+        // Nová verze ukládá jen metadata — obrázek není k dispozici po refreshi
+        return{...msg,_prompt:p.prompt,_modelId:p.modelId,_mimeType:p.mimeType,_imageData:null}
+      }
       if(msg.type==='image_search')return{...msg,_images:Array.isArray(p)?p:undefined,_query:msg.content}
       if(msg.type==='web_search')return{...msg,_webData:{results:p.results||[],summary:p.summary||'',query:p.query||'',searchType:p.searchType||'web',provider:p.provider||''}}
       if(msg.type==='weather')return{...msg,_weatherData:p}
@@ -1460,6 +1636,8 @@ export default function Chat({session}){
             {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 6px',borderRadius:4,flexShrink:0,animation:'thinkPulse 1.5s infinite'}}>💭</span>}
           </div>
           <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
+            {isLoggedIn&&<button className="ib" onClick={shareConversation} title="Sdílet konverzaci" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>🔗</button>}
+            {isLoggedIn&&<button className="ib" onClick={()=>setShowGoals(true)} title="Moje cíle" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>🎯</button>}
             {isLoggedIn&&<button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.addMem}</button>}
             <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>{showStarred?Ic.starF:Ic.star}</button>
             <button className="ib" onClick={exportChat} title="Export" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.export}</button>
@@ -1764,7 +1942,7 @@ export default function Chat({session}){
           {/* Beta footer */}
           <div style={{fontSize:10,color:t.muted,textAlign:'center',marginTop:5}}>
             <span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 5px',borderRadius:3,fontWeight:700,marginRight:4}}>BETA</span>
-            Lumi může dělat chyby · Ctrl+K nová konverzace
+            Lumi může dělat chyby · Ctrl+K nová konverzace · Příkazy: <code style={{fontSize:9,background:t.tag,padding:'1px 4px',borderRadius:3}}>/web</code> <code style={{fontSize:9,background:t.tag,padding:'1px 4px',borderRadius:3}}>/img</code> <code style={{fontSize:9,background:t.tag,padding:'1px 4px',borderRadius:3}}>/kviz</code> <code style={{fontSize:9,background:t.tag,padding:'1px 4px',borderRadius:3}}>/share</code>
             {isLoggedIn&&<span> · ✅ Auto-save</span>}
           </div>
         </div>
@@ -1775,6 +1953,29 @@ export default function Chat({session}){
       {showSet    &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory}/>}
       {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
       {showAddMem &&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
+
+      {/* Share Modal */}
+      {showShareModal&&(
+        <div onClick={()=>setShowShareModal(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:70,backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'min(460px,96vw)',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,padding:'24px',fontFamily:"'DM Sans',sans-serif",animation:'fadeInScale .25s ease'}}>
+            <div style={{fontWeight:700,fontSize:17,color:t.txt,marginBottom:6}}>🔗 Sdílet konverzaci</div>
+            <div style={{fontSize:13,color:t.muted,marginBottom:16}}>Kdokoliv s tímto odkazem si může přečíst konverzaci (read-only).</div>
+            <div style={{display:'flex',gap:8,marginBottom:12}}>
+              <input readOnly value={`${window.location.origin}/shared/${shareSlug}`}
+                style={{flex:1,padding:'8px 11px',background:t.inBg,color:t.txt,border:`1px solid ${t.border}`,borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>
+              <button onClick={()=>navigator.clipboard.writeText(`${window.location.origin}/shared/${shareSlug}`).then(()=>alert('Zkopírováno!'))}
+                style={{padding:'8px 14px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+                📋 Kopírovat
+              </button>
+            </div>
+            <div style={{fontSize:11,color:t.muted,marginBottom:16}}>Kód konverzace: <code style={{background:t.tag,padding:'2px 6px',borderRadius:4}}>{shareSlug}</code></div>
+            <button onClick={()=>setShowShareModal(false)} style={{width:'100%',padding:'9px',borderRadius:9,background:t.btn,color:t.muted,fontSize:13,border:`1px solid ${t.border}`,cursor:'pointer',fontFamily:'inherit'}}>Zavřít</button>
+          </div>
+        </div>
+      )}
+
+      {/* Goals Modal */}
+      {showGoals&&<GoalsModal t={t} token={token||ANON} onClose={()=>setShowGoals(false)} callEdge={callEdge}/>}
       {!cookies   &&<div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:80,padding:'12px 18px',background:t.isDark?'rgba(13,16,25,.97)':'rgba(255,255,255,.97)',backdropFilter:'blur(16px)',borderTop:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',boxShadow:'0 -4px 24px rgba(0,0,0,.2)',animation:'slideUpBanner .4s ease'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:180}}>
           <span style={{fontSize:18}}>🍪</span>
