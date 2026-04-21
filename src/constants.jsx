@@ -139,8 +139,8 @@ export function detectIntent(text){
   const t=text.toLowerCase().trim()
   // Negace
   if(/(nechci|nechce|negeneruj|negenerovat|nevytvářej|nekresli|bez obrázku|bez kvízu|don't generate|do not generate|no image|no quiz)/i.test(t))return'chat'
-  // Počasí — explicitní zmínka o počasí + místo
-  if(/(jaké je počasí|jak je venku|počasí v\s+\w|teplota v\s+\w|weather in|bude pršet|bude sněžit|předpověď počasí)/i.test(t))return'weather'
+  // Počasí — explicitní zmínka o počasí + místo (včetně skloňování)
+  if(/(jaké je počasí|jak je (venku|počasí)|počasí v\s|počasí ve\s|teplota v\s|weather in|bude pršet|bude sněžit|předpověď počasí|co je za počasí|jaké počasí)/i.test(t))return'weather'
   // Kvíz
   if(/(udělej kvíz|vytvoř kvíz|chci kvíz|spusť kvíz|otestuj mě|quiz me|quiz about|kvízové otázky)/i.test(t))return'quiz'
   // Web search — jen explicitní

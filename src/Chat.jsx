@@ -1151,20 +1151,37 @@ export default function Chat({session}){
     if(!city?.trim())return
     setLoading(true);setErr(null)
     const cid=activeConv?.id,isLocal=activeConv?.local
+    const tk=await getFreshToken()||ANON
     const tmpUser={id:uid(),role:'user',content:`🌤️ Počasí: ${city}`,type:'text',created_at:new Date().toISOString(),_tmp:true}
     if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),tmpUser]}))
     else setMsgs(p=>[...p,tmpUser])
     try{
-      const tk=await getFreshToken()||ANON
       const result=await callEdge('weather',{location:city},tk)
-      // Persist weather
-      try{sessionStorage.setItem('lumi_weather',JSON.stringify(result.weather))}catch{}
+      if(result.error)throw new Error(result.error)
       const nid=uid()
-      const aMsg={id:nid,role:'assistant',type:'weather',content:`🌤️ ${result.weather?.city||city}`,_weatherData:result.weather,created_at:new Date().toISOString()}
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{await saveMsg(cid,'user',tmpUser.content);await saveMsg(cid,'assistant',aMsg.content);await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid);setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])}
+      const weatherData=result.weather
+      const aMsg={id:nid,role:'assistant',type:'weather',
+        content:`🌤️ ${weatherData?.city||city}`,
+        _weatherData:weatherData,
+        created_at:new Date().toISOString()}
+      // Zobraz IHNED
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
+        // DB na pozadí — uložíme weather data jako JSON do image_url
+        ;(async()=>{try{
+          await saveMsg(cid,'user',tmpUser.content)
+          await saveMsg(cid,'assistant',aMsg.content,'weather',weatherData)
+          await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+        }catch(e){console.warn('Weather DB save:',e)}})()
+      }
       addNewAnim(nid)
-    }catch(e){setErr('Počasí: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp))}
+    }catch(e){
+      setErr('Počasí: '+e.message)
+      if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c))
+      else setMsgs(p=>p.filter(m=>!m._tmp))
+    }
     finally{setLoading(false)}
   },[activeConv]) // eslint-disable-line
 
@@ -1312,13 +1329,17 @@ export default function Chat({session}){
       setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
       setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,800),8000))
       addNewAnim(nid)
-      if(isLocal)setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
-      else{
-        const uRow=await saveMsg(cid,'user',tmpUser.content)
-        const ar=await saveMsg(cid,'assistant',aMsg.content)
-        if(ar)aMsg.dbId=ar.id
-        await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
-        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false,id:uRow?.id||tmpUser.id},aMsg])
+      if(isLocal){
+        setConvs(p=>p.map(c=>c.id!==cid?c:{...c,messages:[...(c.messages??[]),aMsg]}))
+      } else {
+        setMsgs(p=>[...p.filter(m=>!m._tmp),{...tmpUser,_tmp:false},aMsg])
+        // DB na pozadí — neblokuje UI
+        ;(async()=>{try{
+          const uRow=await saveMsg(cid,'user',tmpUser.content)
+          await saveMsg(cid,'assistant',aMsg.content)
+          await supabase.from('conversations').update({updated_at:new Date().toISOString()}).eq('id',cid)
+          if(uRow?.id)setMsgs(p=>p.map(m=>m.id===tmpUser.id?{...m,id:uRow.id}:m))
+        }catch(dbErr){console.warn('Tool DB save:',dbErr)}})()
       }
     }catch(e){setErr('Chyba nástroje: '+e.message);if(isLocal)setConvs(p=>p.map(c=>c.id===cid?{...c,messages:(c.messages??[]).filter(m=>!m._tmp)}:c));else setMsgs(p=>p.filter(m=>!m._tmp));setInput(text)}
     finally{setLoading(false)}
@@ -1362,7 +1383,7 @@ export default function Chat({session}){
       if(intent==='web_search'){sendWebSearch(userText);return}
       if(intent==='image_search'){setImgMode('image_search');setInput(userText);setTimeout(()=>send(),30);return}
       if(intent==='weather'){
-        const cm=userText.match(/(?:počasí\s+(?:v\s+)?|weather\s+in\s+)([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+(?:\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+)?)/i)
+        const cm=userText.match(/(?:počasí\s+(?:v\s+|ve\s+|na\s+)?|weather\s+in\s+|teplota\s+v\s+|předpověď\s+(?:v\s+)?)([a-záčďéěíňóřšťúůýžA-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][^\s,.!?]{1,30}(?:\s+[a-záčďéěíňóřšťúůýžA-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][^\s,.!?]{1,30})?)/i)
         setInput('');sendWeather(cm?.[1]||'Praha');return
       }
       if(intent==='quiz'){
