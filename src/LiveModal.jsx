@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ANON, callEdge, SYS_DEFAULT, getNowCtx, renderMD } from './constants.jsx'
+import { ANON, callEdge, SYS_DEFAULT, getNowCtx, renderMD, LIVE_MODELS } from './constants.jsx'
 
 // TTS přes Web Speech API — přečte odpověď nahlas
 function speak(text, onStart, onEnd) {
@@ -38,6 +38,7 @@ export default function LiveModal({ t, onClose, sysPmt, token }) {
   const [voices, setVoices]     = useState([])
   const [autoMode, setAutoMode] = useState(true)         // automaticky nahrávat po odpovědi
   const [history, setHistory]   = useState([])           // konverzační historie pro AI
+  const [liveModel, setLiveModel] = useState(LIVE_MODELS[0].id) // vybraný Live model
 
   const recRef   = useRef(null)
   const timerRef = useRef(null)
@@ -258,7 +259,7 @@ export default function LiveModal({ t, onClose, sysPmt, token }) {
         </div>
 
         {/* Nastavení */}
-        <div style={{ padding: '0 18px 10px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: '0 18px 10px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
           <button onClick={() => setAutoMode(a => !a)}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 7, background: autoMode ? t.accent + '22' : t.btn, color: autoMode ? t.accent : t.muted, border: `1px solid ${autoMode ? t.accent : t.border}`, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', fontWeight: autoMode ? 600 : 400 }}>
             🔄 Auto-pokračovat
@@ -267,6 +268,11 @@ export default function LiveModal({ t, onClose, sysPmt, token }) {
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 7, background: t.btn, color: t.muted, border: `1px solid ${t.border}`, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
             🗑️ Reset
           </button>
+          {/* Model selector */}
+          <select value={liveModel} onChange={e => setLiveModel(e.target.value)} disabled={phase !== 'idle'}
+            style={{ padding: '3px 7px', borderRadius: 7, background: t.btn, color: t.muted, border: `1px solid ${t.border}`, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}>
+            {LIVE_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
           <span style={{ fontSize: 10, color: t.muted, marginLeft: 'auto' }}>
             {hasTTS ? (czVoice ? `🔊 ${czVoice.name.slice(0, 20)}` : '🔊 TTS bez CZ hlasu') : '⚠️ TTS chybí'}
           </span>

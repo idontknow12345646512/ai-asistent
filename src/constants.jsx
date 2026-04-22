@@ -7,10 +7,17 @@ export const CONV_COLORS=['','#6c8fff','#22c55e','#f59e0b','#ef4444','#a855f7','
 
 // ── AI Modely ─────────────────────────────────────────────────────────────────
 export const AI_MODELS=[
-  {id:'default',       name:'Flash Lite ⚡',       short:'Lite', desc:'Výchozí — rychlý ~2-4s'},
-  {id:'gemma4',        name:'Gemma 4 31B ✦',       short:'G4',   desc:'Silnější — pomalejší ~10s'},
-  {id:'gemini-25',     name:'Gemini 2.5 Flash 🔷', short:'G2.5', desc:'Výkonný a rychlý ~4-7s'},
-  {id:'gemini-25-pro', name:'Gemini 2.5 Pro 💎',   short:'Pro',  desc:'Nejsilnější — složité úkoly'},
+  {id:'default',       name:'Gemini 3.1 Flash Lite ⚡', short:'3.1L', desc:'Výchozí — nejrychlejší'},
+  {id:'gemini-25',     name:'Gemini 2.5 Flash 🔷',      short:'2.5',  desc:'Výkonný, thinking'},
+  {id:'gemma4',        name:'Gemma 4 31B ✦',             short:'G4',   desc:'Nejsilnější'},
+  {id:'gemini-25-pro', name:'Gemini 2.5 Flash Pro 💎',  short:'Pro',  desc:'Pro úlohy'},
+]
+
+// Live modely — WebSocket Live API (STT+TTS)
+export const LIVE_MODELS=[
+  {id:'gemini-3-flash-live',              name:'Gemini 3 Flash Live 🎙️',          desc:'Nejnovější Live — nejlepší kvalita'},
+  {id:'gemini-2.5-flash-native-audio',   name:'Gemini 2.5 Native Audio 🎵',       desc:'Nativní audio dialog'},
+  {id:'gemini-2.0-flash-live-001',       name:'Gemini 2.0 Flash Live',            desc:'Stabilní Live model'},
 ]
 
 // Live modely
