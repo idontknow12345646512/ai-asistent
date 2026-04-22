@@ -7,10 +7,10 @@ export const CONV_COLORS=['','#6c8fff','#22c55e','#f59e0b','#ef4444','#a855f7','
 
 // ── AI Modely ─────────────────────────────────────────────────────────────────
 export const AI_MODELS=[
-  {id:'default',       name:'Gemini Flash Lite ⚡',      short:'Lite', desc:'Výchozí — rychlý ~2-4s'},
-  {id:'gemma4',        name:'Gemma 4 31B ✦',             short:'G4',   desc:'Silnější — pomalejší ~10-15s'},
-  {id:'gemini-25',     name:'Gemini 2.5 Flash 🔷',       short:'G2.5', desc:'Výkonný a rychlý'},
-  {id:'gemini-25-pro', name:'Gemini 2.5 Pro 💎',         short:'Pro',  desc:'Nejsilnější — složité úkoly'},
+  {id:'default',       name:'Flash Lite ⚡',       short:'Lite', desc:'Výchozí — rychlý ~2-4s'},
+  {id:'gemma4',        name:'Gemma 4 31B ✦',       short:'G4',   desc:'Silnější — pomalejší ~10s'},
+  {id:'gemini-25',     name:'Gemini 2.5 Flash 🔷', short:'G2.5', desc:'Výkonný a rychlý ~4-7s'},
+  {id:'gemini-25-pro', name:'Gemini 2.5 Pro 💎',   short:'Pro',  desc:'Nejsilnější — složité úkoly'},
 ]
 
 // Live modely
