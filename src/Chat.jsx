@@ -838,9 +838,20 @@ export default function Chat({session}){
   const[showCalc,setShowCalc]=useState(false)
   const[showBookmarks,setShowBookmarks]=useState(false)
   const[showFocusTimer,setShowFocusTimer]=useState(false)
-  const[toolMode,setToolMode]=useState(null) // null | 'translate' | 'summarize' | 'correct' | 'rewrite' | 'headlines' | 'seo' | 'email' | 'sentiment' | 'refactor' | 'gen_tests' | 'convert_code' | 'analyze_doc' | 'fact_check' | 'brainstorm' | 'presentation' | 'roleplay'
-  const[toolOptions,setToolOptions]=useState({}) // extra params per tool
+  const[toolMode,setToolMode]=useState(null)
+  const[toolOptions,setToolOptions]=useState({})
   const[isDragging,setIsDragging]=useState(false)
+  // ── ARTIFACTS (Claude AI styl) ──────────────────────────────────────────────
+  const[artifact,setArtifact]=useState(null)       // {code, lang, title}
+  const[artifactOpen,setArtifactOpen]=useState(false)
+  const[artifactTab,setArtifactTab]=useState('preview') // 'preview' | 'code'
+  // ── PROJEKTY ────────────────────────────────────────────────────────────────
+  const[projects,setProjects]=useState([])
+  const[activeProject,setActiveProject]=useState(null)   // vybraný projekt
+  const[showProjectModal,setShowProjectModal]=useState(false)
+  const[editProject,setEditProject]=useState(null)       // editovaný projekt nebo null=nový
+  // ── STYL PSANÍ ──────────────────────────────────────────────────────────────
+  const[writeStyle,setWriteStyle]=useState(null) // null|'concise'|'detailed'|'formal'|'casual'|'technical'
   // Conversations
   const[convs,setConvs]=useState([mkLocal()])
   const[activeId,setActiveId]=useState(null)
@@ -880,9 +891,21 @@ export default function Chat({session}){
 
   // Init
   useEffect(()=>{
-    if(isLoggedIn){getFreshToken().then(setToken);loadConvs()}
+    if(isLoggedIn){getFreshToken().then(setToken);loadConvs();loadProjects()}
     else{const c=mkLocal();setConvs([c]);setActiveId(c.id);setMsgs([])}
   },[isLoggedIn]) // eslint-disable-line
+
+  // Načtení projektů
+  async function loadProjects(){
+    try{const tk=await getFreshToken()||ANON;const d=await callEdge('get_projects',{},tk);if(d.projects)setProjects(d.projects)}catch{}
+  }
+
+  // Detekce artifactů v AI odpovědi — hledá ```html, ```jsx, ```js, ```python bloky
+  function detectArtifact(text){
+    const m=text.match(/```(html|jsx|tsx|js|javascript|python|css|svg|react)\n([\s\S]*?)```/i)
+    if(!m)return null
+    return{lang:m[1].toLowerCase(),code:m[2],title:m[1].toUpperCase()+' artifact'}
+  }
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth'})},[msgs.length,loading])
   useEffect(()=>{setWordCount(input.trim()?input.trim().split(/\s+/).filter(Boolean).length:0)},[input])
@@ -1408,8 +1431,8 @@ export default function Chat({session}){
     try{
       const history=[...prev,tmpUser].map(m=>({role:m.role,content:m.id===tmpUser.id&&api.length>0?api:[{type:'text',text:m.content}]}))
       const tk=isLoggedIn?(await getFreshToken()||ANON):ANON
-      const sysWithDate=sysPmt+getNowCtx()
-      const payload={messages:history,system:sysWithDate,thinking,memory,preferredModel:aiModel}
+      const sysWithDate=(activeProject?.system_prompt?activeProject.system_prompt+'\n\n':'')+sysPmt+getNowCtx()
+      const payload={messages:history,system:sysWithDate,thinking,memory,preferredModel:aiModel,writeStyle:writeStyle||undefined}
       const result=await callEdge(apiMode,payload,tk)
       const nid=uid();let aMsg
       if(result.type==='image_search'){
@@ -1418,6 +1441,9 @@ export default function Chat({session}){
         aMsg={id:nid,role:'assistant',type:'text',content:result.text??'(prázdná odpověď)',created_at:new Date().toISOString()}
         setTypingIds(s=>{const n=new Set(s);n.add(nid);return n})
         setTimeout(()=>setTypingIds(s=>{const n=new Set(s);n.delete(nid);return n}),Math.min(Math.max((result.text?.length||100)*9,1000),10000))
+        // ── ARTIFACT detekce (Claude AI styl) ──────────────────────────────
+        const art=detectArtifact(result.text??'')
+        if(art){setArtifact(art);setArtifactOpen(true);setArtifactTab('preview')}
       }
       addNewAnim(nid)
       // ✅ Zobraz odpověď IHNED
@@ -1563,6 +1589,45 @@ export default function Chat({session}){
 
       {sideOpen&&<div className="sov" onClick={()=>setSideOpen(false)} style={{display:'none',position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:29}}/>}
 
+      {/* ── PROJEKT MODAL ───────────────────────────────────────────────────── */}
+      {showProjectModal&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowProjectModal(false)}>
+          <div style={{background:t.card,borderRadius:16,padding:24,width:400,border:`1px solid ${t.border}`}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,color:t.txt,marginBottom:16}}>{editProject?.id?'Upravit projekt':'Nový projekt'}</div>
+            {['name','description','system_prompt'].map(field=>(
+              <div key={field} style={{marginBottom:12}}>
+                <div style={{fontSize:11,color:t.muted,marginBottom:4,textTransform:'uppercase',letterSpacing:.5}}>{field==='name'?'Název':field==='description'?'Popis':'Vlastní instrukce (system prompt)'}</div>
+                {field==='system_prompt'
+                  ?<textarea value={editProject?.[field]||''} onChange={e=>setEditProject(p=>({...p,[field]:e.target.value}))} placeholder="Instrukce pro AI v tomto projektu…" style={{width:'100%',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,padding:'8px 10px',color:t.txt,fontSize:13,height:90,resize:'none'}}/>
+                  :<input value={editProject?.[field]||''} onChange={e=>setEditProject(p=>({...p,[field]:e.target.value}))} placeholder={field==='name'?'Název projektu…':'Krátký popis…'} style={{width:'100%',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,padding:'8px 10px',color:t.txt,fontSize:13}}/>
+                }
+              </div>
+            ))}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:t.muted,marginBottom:6,textTransform:'uppercase',letterSpacing:.5}}>Ikona a barva</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {['📁','💻','🎨','🔬','📝','🎓','🏠','🎮','🌍','⚡'].map(icon=>(
+                  <button key={icon} onClick={()=>setEditProject(p=>({...p,icon}))} style={{fontSize:18,padding:'4px 8px',borderRadius:6,border:`2px solid ${editProject?.icon===icon?t.accent:t.border}`,background:'transparent',cursor:'pointer'}}>{icon}</button>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                {['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4'].map(color=>(
+                  <button key={color} onClick={()=>setEditProject(p=>({...p,color}))} style={{width:24,height:24,borderRadius:'50%',background:color,border:`3px solid ${editProject?.color===color?t.txt:'transparent'}`,cursor:'pointer'}}/>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              {editProject?.id&&<button onClick={async()=>{await callEdge('delete_project',{project_id:editProject.id},token||ANON);loadProjects();setShowProjectModal(false)}} style={{padding:'7px 14px',borderRadius:8,background:t.danger+'22',color:t.danger,fontSize:13,border:'none',cursor:'pointer'}}>Smazat</button>}
+              <button onClick={()=>setShowProjectModal(false)} style={{padding:'7px 14px',borderRadius:8,background:t.btn,color:t.muted,fontSize:13,border:'none',cursor:'pointer'}}>Zrušit</button>
+              <button onClick={async()=>{
+                await callEdge('save_project',{project_id:editProject?.id,name:editProject?.name||'Projekt',description:editProject?.description,system_prompt:editProject?.system_prompt,color:editProject?.color||'#6366f1',icon:editProject?.icon||'📁'},token||ANON)
+                loadProjects();setShowProjectModal(false)
+              }} style={{padding:'7px 14px',borderRadius:8,background:t.accent,color:'#fff',fontSize:13,border:'none',cursor:'pointer',fontWeight:600}}>Uložit</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── SIDEBAR ────────────────────────────────────────────────────────── */}
       {sideOpen&&(
         <aside className="sidebar" style={{width:266,background:t.side,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
@@ -1601,6 +1666,29 @@ export default function Chat({session}){
           )}
 
           <div style={{flex:1,overflowY:'auto',padding:'4px'}}>
+            {/* ── PROJEKTY ─────────────────────────────────────────────────── */}
+            {isLoggedIn&&projects.length>0&&(
+              <div style={{marginBottom:6}}>
+                <div style={{fontSize:10,color:t.muted,padding:'4px 8px 2px',textTransform:'uppercase',letterSpacing:.8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span>Projekty</span>
+                  <button onClick={()=>{setEditProject({color:'#6366f1',icon:'📁'});setShowProjectModal(true)}} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:13,display:'flex',padding:2}}>{Ic.plus}</button>
+                </div>
+                {projects.map(p=>(
+                  <div key={p.id} onClick={()=>setActiveProject(activeProject?.id===p.id?null:p)}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'5px 8px',borderRadius:7,cursor:'pointer',marginBottom:1,background:activeProject?.id===p.id?p.color+'22':'transparent',borderLeft:`3px solid ${activeProject?.id===p.id?p.color:'transparent'}`}}
+                    onMouseOver={e=>e.currentTarget.style.background=t.active} onMouseOut={e=>e.currentTarget.style.background=activeProject?.id===p.id?p.color+'22':'transparent'}>
+                    <span style={{fontSize:14}}>{p.icon||'📁'}</span>
+                    <span style={{fontSize:13,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:t.txt}}>{p.name}</span>
+                    <button onClick={e=>{e.stopPropagation();setEditProject(p);setShowProjectModal(true)}} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:11,opacity:.5,display:'flex',padding:2}}>{Ic.edit}</button>
+                  </div>
+                ))}
+                <button onClick={()=>{setEditProject({color:'#6366f1',icon:'📁'});setShowProjectModal(true)}} style={{width:'100%',padding:'5px 8px',borderRadius:7,border:`1px dashed ${t.border}`,color:t.muted,fontSize:12,cursor:'pointer',background:'none',textAlign:'left',marginBottom:4}}>+ Nový projekt</button>
+                <div style={{height:1,background:t.border,margin:'4px 4px 6px'}}/>
+              </div>
+            )}
+            {isLoggedIn&&projects.length===0&&(
+              <button onClick={()=>{setEditProject({color:'#6366f1',icon:'📁'});setShowProjectModal(true)}} style={{width:'100%',padding:'5px 8px',borderRadius:7,border:`1px dashed ${t.border}`,color:t.muted,fontSize:12,cursor:'pointer',background:'none',textAlign:'left',marginBottom:6}}>📁 Nový projekt</button>
+            )}
             {dbLoad?<div style={{padding:14,textAlign:'center',fontSize:12,color:t.muted}}>Načítám…</div>
               :convs.map((c,ci)=>(
                 <div key={c.id} className="cr" onClick={()=>selectConv(c.id)}
@@ -1643,7 +1731,8 @@ export default function Chat({session}){
         </aside>
       )}
 
-      {/* ── MAIN ───────────────────────────────────────────────────────────── */}
+      {/* ── MAIN + ARTIFACT PANEL ──────────────────────────────────────────── */}
+      <div style={{flex:1,display:'flex',overflow:'hidden',minWidth:0}}>
       <main id="lumi-main" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,position:'relative'}}>
 
         {/* Drag overlay */}
@@ -1805,7 +1894,38 @@ export default function Chat({session}){
         {/* ── INPUT AREA — Claude.ai style ──────────────────────────────────── */}
         <div style={{padding:'7px 11px 9px',background:t.iaBg,borderTop:`1px solid ${t.border}`,flexShrink:0}}>
 
+          {/* Aktivní projekt banner */}
+          {activeProject&&(
+            <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6,padding:'5px 10px',background:activeProject.color+'18',borderRadius:7,border:`1px solid ${activeProject.color}44`,animation:'dropIn .15s ease'}}>
+              <span style={{fontSize:13}}>{activeProject.icon||'📁'}</span>
+              <span style={{fontSize:12,color:t.txt,fontWeight:500,flex:1}}>{activeProject.name}</span>
+              {activeProject.system_prompt&&<span style={{fontSize:10,color:t.muted}}>vlastní instrukce ✓</span>}
+              <button onClick={()=>setActiveProject(null)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:13,display:'flex',padding:2}}>{Ic.x}</button>
+            </div>
+          )}
 
+          {/* Styl psaní — Claude AI styl */}
+          {(()=>{
+            const STYLES=[
+              {id:'concise',label:'Stručně',icon:'⚡'},
+              {id:'detailed',label:'Detailně',icon:'📖'},
+              {id:'formal',label:'Formálně',icon:'👔'},
+              {id:'casual',label:'Casualně',icon:'😊'},
+              {id:'technical',label:'Technicky',icon:'💻'},
+            ]
+            return writeStyle?(
+              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:6,flexWrap:'wrap'}}>
+                <span style={{fontSize:11,color:t.muted}}>Styl:</span>
+                {STYLES.map(s=>(
+                  <button key={s.id} onClick={()=>setWriteStyle(writeStyle===s.id?null:s.id)}
+                    style={{padding:'2px 9px',borderRadius:12,fontSize:11,border:`1px solid ${writeStyle===s.id?t.accent:t.border}`,background:writeStyle===s.id?t.accent+'22':'transparent',color:writeStyle===s.id?t.accent:t.muted,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:3}}>
+                    <span style={{fontSize:12}}>{s.icon}</span>{s.label}
+                  </button>
+                ))}
+                <button onClick={()=>setWriteStyle(null)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:12,marginLeft:'auto'}}>{Ic.x}</button>
+              </div>
+            ):null
+          })()}
           {toolMode&&TOOL_OPTIONS[toolMode]&&(
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,padding:'7px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease'}}>
               <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
@@ -1885,6 +2005,14 @@ export default function Chat({session}){
                 {thinking&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:t.purple+'22',color:t.purple,fontWeight:600,animation:'thinkPulse 1.5s infinite'}}>
                   💭 Deep Thinking<button onClick={()=>setThinking(false)} style={{color:t.purple,background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
                 </span>}
+                {writeStyle&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,background:'#0891b222',color:'#0891b2',fontWeight:600}}>
+                  ✍️ {({concise:'Stručně',detailed:'Detailně',formal:'Formálně',casual:'Casualně',technical:'Technicky'})[writeStyle]}
+                  <button onClick={()=>setWriteStyle(null)} style={{color:'#0891b2',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
+                {activeProject&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,fontWeight:600}} style={{background:activeProject.color+'22',color:activeProject.color}}>
+                  {activeProject.icon} {activeProject.name}
+                  <button onClick={()=>setActiveProject(null)} style={{color:activeProject.color,background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
+                </span>}
               </div>
             )}
 
@@ -1918,6 +2046,39 @@ export default function Chat({session}){
 
               {/* Voice */}
               <VoiceBtn t={t} onTranscript={txt=>{setInput(txt);setTimeout(()=>taRef.current?.focus(),100)}}/>
+
+              {/* ✍️ Styl psaní — Claude AI styl */}
+              {isLoggedIn&&(
+                <div style={{position:'relative'}}>
+                  <Dropdown t={t} label="" alignRight={true} icon={
+                    <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:8,background:writeStyle?'#0891b222':t.btn,border:`1px solid ${writeStyle?'#0891b2':t.border}`,color:writeStyle?'#0891b2':t.muted,fontSize:11,fontWeight:500,cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}>
+                      ✍️ {writeStyle?({concise:'Stručně',detailed:'Detailně',formal:'Formálně',casual:'Casualně',technical:'Technicky'})[writeStyle]:'Styl'} {Ic.chevDn}
+                    </div>
+                  } active={!!writeStyle} accent="#0891b2">
+                    <div style={{padding:'4px 0',width:200}}>
+                      <div style={{fontSize:9,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.1em',padding:'4px 12px 2px'}}>Styl odpovědi</div>
+                      {[
+                        {id:null,icon:'🔄',label:'Automaticky',sub:'Lumi rozhodne sám'},
+                        {id:'concise',icon:'⚡',label:'Stručně',sub:'Krátké odpovědi'},
+                        {id:'detailed',icon:'📖',label:'Detailně',sub:'S příklady a kontextem'},
+                        {id:'formal',icon:'👔',label:'Formálně',sub:'Profesionální tón'},
+                        {id:'casual',icon:'😊',label:'Casualně',sub:'Přátelský styl'},
+                        {id:'technical',icon:'🔧',label:'Technicky',sub:'Odborné termíny'},
+                      ].map(s=>(
+                        <DItem key={s.id??'auto'} t={t} onClick={()=>setWriteStyle(s.id)} active={writeStyle===s.id} clr="#0891b2" icon={s.icon} label={s.label} sub={s.sub}/>
+                      ))}
+                    </div>
+                  </Dropdown>
+                </div>
+              )}
+
+              {/* Styl psaní — tlačítko */}
+              {isLoggedIn&&(
+                <button onClick={()=>setWriteStyle(s=>s?null:'concise')} title="Styl psaní"
+                  style={{display:'flex',alignItems:'center',gap:3,padding:'4px 8px',borderRadius:8,background:writeStyle?t.accent+'22':t.btn,border:`1px solid ${writeStyle?t.accent:t.border}`,color:writeStyle?t.accent:t.muted,fontSize:11,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
+                  ✏️ {writeStyle||'Styl'}
+                </button>
+              )}
 
               {/* Model Picker — pill jako "Sonnet 4.6" */}
               {isLoggedIn&&(
@@ -1969,7 +2130,65 @@ export default function Chat({session}){
         </div>
       </main>
 
-      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+      {/* ── ARTIFACT PANEL (Claude AI styl) ────────────────────────────────── */}
+      {artifactOpen&&artifact&&(
+        <div style={{width:'min(480px,45vw)',minWidth:320,borderLeft:`1px solid ${t.border}`,display:'flex',flexDirection:'column',background:t.side,animation:'fadeIn .2s ease',flexShrink:0}}>
+          {/* Artifact header */}
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+            <span style={{fontSize:13,fontWeight:600,color:t.txt,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {artifact.lang==='html'||artifact.lang==='jsx'||artifact.lang==='tsx'?'🖼️':'📄'} {artifact.title}
+            </span>
+            {/* Tab switcher */}
+            {['preview','code'].map(tab=>(
+              <button key={tab} onClick={()=>setArtifactTab(tab)}
+                style={{padding:'3px 10px',borderRadius:6,fontSize:12,border:`1px solid ${artifactTab===tab?t.accent:t.border}`,background:artifactTab===tab?t.accent+'22':'transparent',color:artifactTab===tab?t.accent:t.muted,cursor:'pointer',fontWeight:artifactTab===tab?600:400}}>
+                {tab==='preview'?'Náhled':'Kód'}
+              </button>
+            ))}
+            <button onClick={()=>setArtifactOpen(false)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',display:'flex',padding:4,borderRadius:5}}>{Ic.x}</button>
+          </div>
+          {/* Artifact content */}
+          <div style={{flex:1,overflow:'auto',position:'relative'}}>
+            {artifactTab==='preview'?(
+              ['html','jsx','tsx','svg'].includes(artifact.lang)?(
+                <iframe
+                  srcDoc={artifact.lang==='svg'?`<!DOCTYPE html><html><body style="margin:0;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh">${artifact.code}</body></html>`:
+                    artifact.code.includes('<!DOCTYPE')||artifact.code.includes('<html')?artifact.code:
+                    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:16px;margin:0}</style></head><body>${artifact.code}</body></html>`}
+                  style={{width:'100%',height:'100%',border:'none',minHeight:400}}
+                  sandbox="allow-scripts allow-same-origin"
+                  title="Artifact preview"
+                />
+              ):(
+                <pre style={{padding:16,fontSize:13,color:t.txt,fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-all',margin:0}}>{artifact.code}</pre>
+              )
+            ):(
+              <div style={{position:'relative'}}>
+                <pre style={{padding:16,fontSize:12,color:t.txt,fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-all',margin:0,lineHeight:1.6}}>{artifact.code}</pre>
+                <button onClick={()=>navigator.clipboard.writeText(artifact.code)}
+                  style={{position:'sticky',top:8,right:8,float:'right',margin:'8px 8px 0 0',padding:'4px 10px',borderRadius:6,fontSize:11,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>
+                  📋 Kopírovat
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Artifact footer */}
+          <div style={{padding:'8px 14px',borderTop:`1px solid ${t.border}`,display:'flex',gap:8,flexShrink:0}}>
+            <button onClick={()=>navigator.clipboard.writeText(artifact.code)}
+              style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>
+              📋 Kopírovat kód
+            </button>
+            <button onClick={()=>{
+              const blob=new Blob([artifact.code],{type:'text/plain'})
+              const a=document.createElement('a');a.href=URL.createObjectURL(blob)
+              a.download=`artifact.${artifact.lang==='javascript'?'js':artifact.lang}`;a.click()
+            }} style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>
+              ⬇️ Stáhnout
+            </button>
+          </div>
+        </div>
+      )}
+      </div>{/* konec MAIN + ARTIFACT wrapper */}
       {showAuth   &&<AuthModal onClose={()=>setShowAuth(false)} dark={t.isDark}/>}
       {showSet    &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory}/>}
       {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
