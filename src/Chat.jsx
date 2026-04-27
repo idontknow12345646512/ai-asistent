@@ -655,7 +655,305 @@ function AddMemoryModal({t,onClose,onSave}){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ── MAIN CHAT ─────────────────────────────────────────────────────────────────
+// ── LUMI CODE — kódový asistent (Claude Code styl) ────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function LumiCode({t,token,onClose,callEdge}){
+  const[input,setInput]=useState('')
+  const[lang,setLang]=useState('javascript')
+  const[task,setTask]=useState('explain')
+  const[result,setResult]=useState(null)
+  const[loading,setLoading]=useState(false)
+  const[history,setHistory]=useState([])
+
+  const TASKS=[
+    {id:'explain',label:'Vysvětlit',icon:'📖',sub:'Co dělá tento kód'},
+    {id:'refactor',label:'Refaktorovat',icon:'🔧',sub:'Vylepšit kvalitu'},
+    {id:'gen_tests',label:'Napsat testy',icon:'🧪',sub:'Unit testy'},
+    {id:'debug',label:'Debugovat',icon:'🐛',sub:'Najít chyby'},
+    {id:'convert_code',label:'Konvertovat',icon:'🔄',sub:'Do jiného jazyka'},
+    {id:'write_code',label:'Napsat kód',icon:'✍️',sub:'Nový kód dle zadání'},
+  ]
+  const LANGS=['javascript','typescript','python','java','c#','go','rust','php','html','css','sql']
+
+  const run=async()=>{
+    if(!input.trim())return
+    setLoading(true);setResult(null)
+    try{
+      const payload=task==='convert_code'?{fromLang:lang,toLang:'python',text:input}
+        :task==='write_code'?{messages:[{role:'user',content:input}],system:`Expert ${lang} developer. Write clean, commented code.`}
+        :{text:input,lang}
+      const d=await callEdge(task==='write_code'?'chat':task,payload,token)
+      const res=d.text||d.explanation||'Hotovo.'
+      setResult(res)
+      setHistory(h=>[{task,lang,input:input.slice(0,60)+'…',result:res,ts:Date.now()},...h.slice(0,9)])
+    }catch(e){setResult('Chyba: '+e.message)}
+    setLoading(false)
+  }
+
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(800px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .2s ease',fontFamily:"'DM Sans',sans-serif"}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,background:'#10b98110',flexShrink:0}}>
+          <span style={{fontSize:20}}>{'</>'}</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:15,color:'#10b981'}}>Lumi Code</div>
+            <div style={{fontSize:11,color:t.muted}}>AI kódový asistent · poháněný Gemini 3.1 Flash Lite</div>
+          </div>
+          <button onClick={onClose} style={{marginLeft:'auto',color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18}}>✕</button>
+        </div>
+        <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+          {/* Left panel — input */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',padding:16,gap:10,borderRight:`1px solid ${t.border}`,overflow:'auto'}}>
+            {/* Task selector */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+              {TASKS.map(tk=>(
+                <button key={tk.id} onClick={()=>setTask(tk.id)}
+                  style={{padding:'8px 6px',borderRadius:8,border:`1px solid ${task===tk.id?'#10b981':t.border}`,background:task===tk.id?'#10b98122':t.btn,cursor:'pointer',textAlign:'center',transition:'all .15s'}}>
+                  <div style={{fontSize:16}}>{tk.icon}</div>
+                  <div style={{fontSize:12,fontWeight:task===tk.id?600:400,color:task===tk.id?'#10b981':t.txt}}>{tk.label}</div>
+                  <div style={{fontSize:10,color:t.muted}}>{tk.sub}</div>
+                </button>
+              ))}
+            </div>
+            {/* Lang selector */}
+            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+              {LANGS.map(l=>(
+                <button key={l} onClick={()=>setLang(l)}
+                  style={{padding:'3px 9px',borderRadius:10,fontSize:11,border:`1px solid ${lang===l?'#10b981':t.border}`,background:lang===l?'#10b98122':'transparent',color:lang===l?'#10b981':t.muted,cursor:'pointer',fontFamily:'inherit'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {/* Code input */}
+            <textarea value={input} onChange={e=>setInput(e.target.value)}
+              placeholder={task==='write_code'?'Popiš co chceš napsat…':'Vlož kód sem…'}
+              style={{flex:1,minHeight:180,padding:'10px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:12,fontFamily:'monospace',resize:'none',outline:'none',lineHeight:1.6}}/>
+            <button onClick={run} disabled={loading||!input.trim()}
+              style={{padding:'10px',borderRadius:8,background:loading?t.btn:'#10b981',color:loading?t.muted:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:loading?'default':'pointer',transition:'all .2s'}}>
+              {loading?'⏳ Zpracovávám…':'▶ Spustit'}
+            </button>
+            {/* History */}
+            {history.length>0&&(
+              <div>
+                <div style={{fontSize:10,color:t.muted,textTransform:'uppercase',letterSpacing:.5,marginBottom:4}}>Historie</div>
+                {history.slice(0,4).map((h,i)=>(
+                  <div key={i} onClick={()=>{setInput(h.input.replace('…',''));setResult(h.result)}}
+                    style={{padding:'5px 8px',borderRadius:6,background:t.btn,marginBottom:3,cursor:'pointer',fontSize:11,color:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {TASKS.find(tk=>tk.id===h.task)?.icon} {h.input}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Right panel — result */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            {result?(
+              <>
+                <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+                  <span style={{fontSize:12,fontWeight:600,color:t.txt,flex:1}}>Výsledek</span>
+                  <button onClick={()=>navigator.clipboard.writeText(result)} style={{padding:'3px 10px',borderRadius:6,fontSize:11,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>📋 Kopírovat</button>
+                </div>
+                <div style={{flex:1,overflow:'auto',padding:14}}>
+                  <pre style={{whiteSpace:'pre-wrap',fontFamily:'monospace',fontSize:12,color:t.txt,lineHeight:1.7,margin:0}}>{result}</pre>
+                </div>
+              </>
+            ):(
+              <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8,color:t.muted}}>
+                <span style={{fontSize:40}}>{'</>'}</span>
+                <span style={{fontSize:13}}>Výsledek se zobrazí zde</span>
+                <span style={{fontSize:11,textAlign:'center',maxWidth:200,lineHeight:1.5}}>Vyber úkol, jazyk, vlož kód a stiskni Spustit</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── LUMI COWORK — AI pro soubory a úkoly (Cowork styl) ───────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function LumiCowork({t,token,onClose,callEdge}){
+  const[tab,setTab]=useState('tasks')     // 'tasks' | 'docs' | 'summarize'
+  const[tasks,setTasks]=useState(()=>{try{return JSON.parse(localStorage.getItem('lumi_tasks')||'[]')}catch{return[]}})
+  const[newTask,setNewTask]=useState('')
+  const[taskPri,setTaskPri]=useState('medium')
+  const[docText,setDocText]=useState('')
+  const[docResult,setDocResult]=useState(null)
+  const[docOp,setDocOp]=useState('summarize')
+  const[docQ,setDocQ]=useState('')
+  const[loading,setLoading]=useState(false)
+  const[aiTask,setAiTask]=useState('')
+  const[aiResult,setAiResult]=useState(null)
+
+  const saveTasks=tasks_=>localStorage.setItem('lumi_tasks',JSON.stringify(tasks_))
+
+  const addTask=()=>{
+    if(!newTask.trim())return
+    const t_=[...tasks,{id:Date.now(),text:newTask,priority:taskPri,done:false,ts:Date.now()}]
+    setTasks(t_);saveTasks(t_);setNewTask('')
+  }
+  const toggleTask=id=>{const t_=tasks.map(t=>t.id===id?{...t,done:!t.done}:t);setTasks(t_);saveTasks(t_)}
+  const delTask=id=>{const t_=tasks.filter(t=>t.id!==id);setTasks(t_);saveTasks(t_)}
+
+  const runDocOp=async()=>{
+    if(!docText.trim())return
+    setLoading(true);setDocResult(null)
+    try{
+      let d
+      if(docOp==='summarize')d=await callEdge('summarize',{text:docText,style:'bullets'},token)
+      else if(docOp==='analyze_doc')d=await callEdge('analyze_doc',{text:docText,question:docQ||'Shrň hlavní body'},token)
+      else if(docOp==='translate')d=await callEdge('translate',{text:docText,targetLang:'angličtina'},token)
+      else if(docOp==='correct')d=await callEdge('correct',{text:docText},token)
+      setDocResult(d?.text||'Hotovo.')
+    }catch(e){setDocResult('Chyba: '+e.message)}
+    setLoading(false)
+  }
+
+  const runAiTask=async()=>{
+    if(!aiTask.trim())return
+    setLoading(true);setAiResult(null)
+    try{
+      const d=await callEdge('chat',{messages:[{role:'user',content:aiTask}],system:'Jsi Lumi Cowork — AI asistent pro produktivitu a úkoly. Odpovídej česky, konkrétně a prakticky.'},token)
+      setAiResult(d.text)
+    }catch(e){setAiResult('Chyba: '+e.message)}
+    setLoading(false)
+  }
+
+  const PRI={high:{label:'Vysoká',color:'#ef4444'},medium:{label:'Střední',color:'#f59e0b'},low:{label:'Nízká',color:'#10b981'}}
+
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(780px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .2s ease',fontFamily:"'DM Sans',sans-serif"}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,background:'#f59e0b10',flexShrink:0}}>
+          <span style={{fontSize:20}}>🤝</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:15,color:'#f59e0b'}}>Lumi Cowork</div>
+            <div style={{fontSize:11,color:t.muted}}>AI asistent pro úkoly a dokumenty · poháněný Gemini</div>
+          </div>
+          <button onClick={onClose} style={{marginLeft:'auto',color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18}}>✕</button>
+        </div>
+        {/* Tabs */}
+        <div style={{display:'flex',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+          {[['tasks','✅ Úkoly'],['docs','📄 Dokumenty'],['ai','🤖 AI asistent']].map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)}
+              style={{flex:1,padding:'10px',fontSize:13,border:'none',borderBottom:`2px solid ${tab===id?'#f59e0b':'transparent'}`,background:tab===id?'#f59e0b10':'transparent',color:tab===id?'#f59e0b':t.muted,cursor:'pointer',fontFamily:'inherit',fontWeight:tab===id?600:400,transition:'all .15s'}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Content */}
+        <div style={{flex:1,overflow:'auto',padding:16}}>
+          {tab==='tasks'&&(
+            <div>
+              {/* Add task */}
+              <div style={{display:'flex',gap:8,marginBottom:12}}>
+                <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
+                  placeholder="Přidat úkol…"
+                  style={{flex:1,padding:'8px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:13,outline:'none',fontFamily:'inherit'}}/>
+                <div style={{display:'flex',gap:4}}>
+                  {Object.entries(PRI).map(([k,v])=>(
+                    <button key={k} onClick={()=>setTaskPri(k)}
+                      style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${taskPri===k?v.color:t.border}`,background:taskPri===k?v.color+'22':'transparent',color:taskPri===k?v.color:t.muted,fontSize:11,cursor:'pointer'}}>
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={addTask} style={{padding:'8px 14px',borderRadius:8,background:'#f59e0b',color:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:'pointer'}}>+</button>
+              </div>
+              {/* Task list */}
+              {tasks.length===0?(
+                <div style={{textAlign:'center',color:t.muted,padding:32,fontSize:13}}>Žádné úkoly · přidej první!</div>
+              ):(
+                <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                  {['high','medium','low'].map(pri=>{
+                    const priTasks=tasks.filter(t=>t.priority===pri)
+                    if(!priTasks.length)return null
+                    return(
+                      <div key={pri}>
+                        <div style={{fontSize:10,color:PRI[pri].color,textTransform:'uppercase',letterSpacing:.5,marginBottom:4,marginTop:4}}>{PRI[pri].label} priorita</div>
+                        {priTasks.map(task=>(
+                          <div key={task.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,background:task.done?t.btn:t.card,border:`1px solid ${t.border}`,marginBottom:4,transition:'all .15s'}}>
+                            <input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)} style={{accentColor:PRI[pri].color,cursor:'pointer',width:15,height:15}}/>
+                            <span style={{flex:1,fontSize:13,color:task.done?t.muted:t.txt,textDecoration:task.done?'line-through':'none'}}>{task.text}</span>
+                            <span style={{width:6,height:6,borderRadius:'50%',background:PRI[pri].color,flexShrink:0}}/>
+                            <button onClick={()=>delTask(task.id)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:13,display:'flex',padding:2}}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                  <div style={{fontSize:11,color:t.muted,textAlign:'center',marginTop:8}}>
+                    {tasks.filter(t=>t.done).length}/{tasks.length} hotovo
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {tab==='docs'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {[['summarize','📋 Shrnutí'],['analyze_doc','🔍 Analýza'],['translate','🌐 Překlad'],['correct','✏️ Korektura']].map(([id,label])=>(
+                  <button key={id} onClick={()=>setDocOp(id)}
+                    style={{padding:'5px 12px',borderRadius:8,border:`1px solid ${docOp===id?'#f59e0b':t.border}`,background:docOp===id?'#f59e0b22':t.btn,color:docOp===id?'#f59e0b':t.muted,fontSize:12,cursor:'pointer',fontFamily:'inherit',fontWeight:docOp===id?600:400}}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {docOp==='analyze_doc'&&(
+                <input value={docQ} onChange={e=>setDocQ(e.target.value)} placeholder="Otázka k dokumentu…"
+                  style={{padding:'7px 11px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:7,color:t.txt,fontSize:12,outline:'none',fontFamily:'inherit'}}/>
+              )}
+              <textarea value={docText} onChange={e=>setDocText(e.target.value)} placeholder="Vlož text dokumentu…"
+                style={{minHeight:140,padding:'10px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:12,resize:'none',outline:'none',fontFamily:'inherit',lineHeight:1.6}}/>
+              <button onClick={runDocOp} disabled={loading||!docText.trim()}
+                style={{padding:'9px',borderRadius:8,background:loading?t.btn:'#f59e0b',color:loading?t.muted:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:loading?'default':'pointer'}}>
+                {loading?'⏳ Zpracovávám…':'▶ Spustit'}
+              </button>
+              {docResult&&(
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:8,padding:12}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+                    <span style={{fontSize:12,fontWeight:600,color:t.txt}}>Výsledek</span>
+                    <button onClick={()=>navigator.clipboard.writeText(docResult)} style={{fontSize:11,padding:'2px 8px',borderRadius:5,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>📋</button>
+                  </div>
+                  <pre style={{whiteSpace:'pre-wrap',fontSize:12,color:t.txt,fontFamily:'inherit',lineHeight:1.6,margin:0}}>{docResult}</pre>
+                </div>
+              )}
+            </div>
+          )}
+          {tab==='ai'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{fontSize:12,color:t.muted}}>Zeptej se AI na cokoliv ohledně produktivity, plánování nebo úkolů</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:4}}>
+                {['Navrhni týdenní plán','Pomoz mi prioritizovat úkoly','Napiš email kolegovi','Brainstorm nápady pro projekt'].map(s=>(
+                  <button key={s} onClick={()=>setAiTask(s)}
+                    style={{padding:'4px 10px',borderRadius:10,fontSize:11,border:`1px solid ${t.border}`,background:t.btn,color:t.muted,cursor:'pointer',fontFamily:'inherit'}}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <textarea value={aiTask} onChange={e=>setAiTask(e.target.value)} placeholder="Napiš úkol pro AI…" rows={3}
+                style={{padding:'10px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:13,resize:'none',outline:'none',fontFamily:'inherit',lineHeight:1.6}}/>
+              <button onClick={runAiTask} disabled={loading||!aiTask.trim()}
+                style={{padding:'9px',borderRadius:8,background:loading?t.btn:'#f59e0b',color:loading?t.muted:'#fff',fontSize:13,fontWeight:600,border:'none',cursor:loading?'default':'pointer'}}>
+                {loading?'⏳ Přemýšlím…':'▶ Spustit'}
+              </button>
+              {aiResult&&(
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:8,padding:12}}>
+                  <pre style={{whiteSpace:'pre-wrap',fontSize:13,color:t.txt,fontFamily:'inherit',lineHeight:1.7,margin:0}}>{aiResult}</pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ── GoalsModal — Sledování cílů (nápad 19) ────────────────────────────────────
 function GoalsModal({t,token,onClose,callEdge}){
@@ -841,6 +1139,9 @@ export default function Chat({session}){
   const[toolMode,setToolMode]=useState(null)
   const[toolOptions,setToolOptions]=useState({})
   const[isDragging,setIsDragging]=useState(false)
+  // ── LUMI CODE + LUMI COWORK ─────────────────────────────────────────────────
+  const[showLumiCode,setShowLumiCode]=useState(false)
+  const[showLumiCowork,setShowLumiCowork]=useState(false)
   // ── ARTIFACTS (Claude AI styl) ──────────────────────────────────────────────
   const[artifact,setArtifact]=useState(null)       // {code, lang, title}
   const[artifactOpen,setArtifactOpen]=useState(false)
@@ -1712,6 +2013,17 @@ export default function Chat({session}){
           </div>
 
           <div style={{padding:'9px 10px',borderTop:`1px solid ${t.border}`}}>
+            {/* ── Lumi Code + Lumi Cowork ─────────────────────────────────── */}
+            <div style={{display:'flex',gap:5,marginBottom:8}}>
+              <button onClick={()=>setShowLumiCode(true)}
+                style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,background:'#10b98122',border:`1px solid #10b98144`,color:'#10b981',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                <span style={{fontSize:14}}>{'</>'}</span> Code
+              </button>
+              <button onClick={()=>setShowLumiCowork(true)}
+                style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,background:'#f59e0b22',border:`1px solid #f59e0b44`,color:'#f59e0b',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                <span style={{fontSize:14}}>🤝</span> Cowork
+              </button>
+            </div>
             {isLoggedIn?(
               <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <div style={{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}33)`,border:`1px solid ${t.gradA}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:t.accent,flexShrink:0}}>{userInitial}</div>
@@ -1904,28 +2216,6 @@ export default function Chat({session}){
             </div>
           )}
 
-          {/* Styl psaní — Claude AI styl */}
-          {(()=>{
-            const STYLES=[
-              {id:'concise',label:'Stručně',icon:'⚡'},
-              {id:'detailed',label:'Detailně',icon:'📖'},
-              {id:'formal',label:'Formálně',icon:'👔'},
-              {id:'casual',label:'Casualně',icon:'😊'},
-              {id:'technical',label:'Technicky',icon:'💻'},
-            ]
-            return writeStyle?(
-              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:6,flexWrap:'wrap'}}>
-                <span style={{fontSize:11,color:t.muted}}>Styl:</span>
-                {STYLES.map(s=>(
-                  <button key={s.id} onClick={()=>setWriteStyle(writeStyle===s.id?null:s.id)}
-                    style={{padding:'2px 9px',borderRadius:12,fontSize:11,border:`1px solid ${writeStyle===s.id?t.accent:t.border}`,background:writeStyle===s.id?t.accent+'22':'transparent',color:writeStyle===s.id?t.accent:t.muted,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:3}}>
-                    <span style={{fontSize:12}}>{s.icon}</span>{s.label}
-                  </button>
-                ))}
-                <button onClick={()=>setWriteStyle(null)} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:12,marginLeft:'auto'}}>{Ic.x}</button>
-              </div>
-            ):null
-          })()}
           {toolMode&&TOOL_OPTIONS[toolMode]&&(
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,padding:'7px 12px',background:t.tag,borderRadius:9,border:`1px solid #06b6d444`,animation:'dropIn .2s ease'}}>
               <span style={{fontSize:11,color:'#06b6d4',fontWeight:600,flexShrink:0}}>{TOOL_OPTIONS[toolMode].label}:</span>
@@ -2009,10 +2299,6 @@ export default function Chat({session}){
                   ✍️ {({concise:'Stručně',detailed:'Detailně',formal:'Formálně',casual:'Casualně',technical:'Technicky'})[writeStyle]}
                   <button onClick={()=>setWriteStyle(null)} style={{color:'#0891b2',background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
                 </span>}
-                {activeProject&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'2px 8px',borderRadius:12,fontWeight:600}} style={{background:activeProject.color+'22',color:activeProject.color}}>
-                  {activeProject.icon} {activeProject.name}
-                  <button onClick={()=>setActiveProject(null)} style={{color:activeProject.color,background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',lineHeight:1}}>{Ic.x}</button>
-                </span>}
               </div>
             )}
 
@@ -2070,14 +2356,6 @@ export default function Chat({session}){
                     </div>
                   </Dropdown>
                 </div>
-              )}
-
-              {/* Styl psaní — tlačítko */}
-              {isLoggedIn&&(
-                <button onClick={()=>setWriteStyle(s=>s?null:'concise')} title="Styl psaní"
-                  style={{display:'flex',alignItems:'center',gap:3,padding:'4px 8px',borderRadius:8,background:writeStyle?t.accent+'22':t.btn,border:`1px solid ${writeStyle?t.accent:t.border}`,color:writeStyle?t.accent:t.muted,fontSize:11,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
-                  ✏️ {writeStyle||'Styl'}
-                </button>
               )}
 
               {/* Model Picker — pill jako "Sonnet 4.6" */}
@@ -2216,6 +2494,8 @@ export default function Chat({session}){
 
       {/* Goals Modal */}
       {showGoals&&<GoalsModal t={t} token={token||ANON} onClose={()=>setShowGoals(false)} callEdge={callEdge}/>}
+      {showLumiCode&&<LumiCode t={t} token={token||ANON} onClose={()=>setShowLumiCode(false)} callEdge={callEdge}/>}
+      {showLumiCowork&&<LumiCowork t={t} token={token||ANON} onClose={()=>setShowLumiCowork(false)} callEdge={callEdge}/>}
       {!cookies   &&<div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:80,padding:'12px 18px',background:t.isDark?'rgba(13,16,25,.97)':'rgba(255,255,255,.97)',backdropFilter:'blur(16px)',borderTop:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',boxShadow:'0 -4px 24px rgba(0,0,0,.2)',animation:'slideUpBanner .4s ease'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:180}}>
           <span style={{fontSize:18}}>🍪</span>
