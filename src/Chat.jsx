@@ -677,45 +677,16 @@ function LumiCode({t,token,onClose,callEdge}){
   ]
   const LANGS=['javascript','typescript','python','java','c#','go','rust','php','html','css','sql','kotlin','swift']
 
-  // Anthropic API přímo — claude-sonnet-4-6
-  const callClaude=async(systemPrompt,userMsg)=>{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1000,
-        system:systemPrompt,
-        messages:[{role:'user',content:userMsg}]
-      })
-    })
-    const d=await res.json()
-    if(d.error)throw new Error(d.error.message)
-    return d.content?.[0]?.text||''
-  }
-
-  const SYS={
-    explain:`Expert ${lang} developer. Vysvětli kód česky: 1) Co dělá 2) Jak funguje 3) Klíčové části. Buď konkrétní a stručný.`,
-    refactor:`Expert ${lang} developer. Refaktoruj kód: zlepši čitelnost, výkon, best practices. Vrať POUZE refaktorovaný kód + seznam změn pod ním.`,
-    gen_tests:`Expert ${lang} tester. Napiš unit testy pro tento kód. Pokryj happy path, edge cases a error stavy.`,
-    debug:`Expert ${lang} debugger. Najdi všechny bugy, security problémy a potenciální chyby. Vysvětli každý problém a navrhni opravu.`,
-    convert:`Expert developer. Konvertuj kód z ${lang} do ${toLang}. Zachovej logiku, přidej komentáře kde je to potřeba. Vrať POUZE kód v ${toLang}.`,
-    write:`Expert ${lang} developer. Napiš čistý, komentovaný kód dle zadání. Přidej příklady použití.`,
-  }
-
+  // Volá Supabase EF (server-side) — žádný CORS problém
   const run=async()=>{
     if(!input.trim())return
     setLoading(true);setResult(null);setErr(null)
     try{
-      const userMsg=task==='convert'
-        ?`Konvertuj tento ${lang} kód do ${toLang}:\n\`\`\`${lang}\n${input}\n\`\`\``
-        :task==='write'
-        ?`Napiš ${lang} kód pro: ${input}`
-        :`\`\`\`${lang}\n${input}\n\`\`\``
-      const res=await callClaude(SYS[task]||SYS.explain, userMsg)
-      setResult(res)
-      setHistory(h=>[{task,lang,input:input.slice(0,55)+'…',result:res,ts:Date.now()},...h.slice(0,9)])
-    }catch(e){setErr('Chyba: '+e.message)}
+      const d=await callEdge('lumi_code',{task,code:input,lang,toLang},token)
+      if(d.error)throw new Error(d.error)
+      setResult(d.text||'Hotovo.')
+      setHistory(h=>[{task,lang,input:input.slice(0,55)+'…',result:d.text,ts:Date.now()},...h.slice(0,9)])
+    }catch(e){setErr('Chyba: '+String(e))}
     setLoading(false)
   }
 
@@ -855,16 +826,11 @@ function LumiCowork({t,token,onClose,callEdge}){
   const toggleTask=id=>{const t_=tasks.map(t=>t.id===id?{...t,done:!t.done}:t);setTasks(t_);saveTasks(t_)}
   const delTask=id=>{const t_=tasks.filter(t=>t.id!==id);setTasks(t_);saveTasks(t_)}
 
-  // Anthropic API pro AI asistenta
+  // Anthropic API přes EF (server-side, bez CORS)
   const callClaude=async(system,messages)=>{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system,messages})
-    })
-    const d=await res.json()
-    if(d.error)throw new Error(d.error.message)
-    return d.content?.[0]?.text||''
+    const d=await callEdge('lumi_cowork_ai',{coworkSystem:system,coworkMessages:messages},token)
+    if(d.error)throw new Error(d.error)
+    return d.text||''
   }
 
   // Dokumenty — přes callEdge (Gemini), výsledek přes renderMD
