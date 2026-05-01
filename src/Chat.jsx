@@ -544,15 +544,22 @@ function CalcWidget({t,onResult}){
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLoggedIn,userId,memory,setMemory}){
+function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLoggedIn,userId,memory,setMemory,
+  shareConversation,exportChat,setShowGoals,setShowAddMem}){
   const[tmp,setTmp]=useState(sysPmt),[tab,setTab]=useState('appearance'),[memList,setMemList]=useState([])
   useEffect(()=>{if(tab==='memory'&&isLoggedIn)supabase.from('user_memory').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(50).then(({data})=>setMemList(data||[]))},[tab,isLoggedIn,userId])
   const delMem=async id=>{await supabase.from('user_memory').delete().eq('id',id);setMemList(p=>p.filter(m=>m.id!==id))}
-  const tabs=[{id:'appearance',l:'Vzhled',e:'🎨'},{id:'behavior',l:'Chování',e:'⚙️'},{id:'memory',l:'Paměť',e:'🧠'},{id:'about',l:'O Lumi',e:'ℹ️'}]
+  const tabs=[
+    {id:'appearance',l:'Vzhled',e:'🎨'},
+    {id:'behavior',l:'Chování',e:'⚙️'},
+    {id:'memory',l:'Paměť',e:'🧠'},
+    {id:'tools',l:'Nástroje',e:'🛠️'},
+    {id:'about',l:'O Lumi',e:'ℹ️'},
+  ]
   return(
     <>
       <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:49,backdropFilter:'blur(4px)'}}/>
-      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(560px,96vw)',maxHeight:'88vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s ease'}}>
+      <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:50,width:'min(580px,96vw)',maxHeight:'88vh',display:'flex',flexDirection:'column',background:t.modal,border:`1px solid ${t.border}`,borderRadius:18,fontFamily:"'DM Sans',sans-serif",overflow:'hidden',animation:'fadeInScale .25s ease'}}>
         <div style={{padding:'16px 18px 0',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
           <div style={{display:'flex',alignItems:'center',gap:9}}><LumiAvatar size={30} gradient={[t.gradA,t.gradB]}/><h2 style={{fontSize:15,fontWeight:600,color:t.txt}}>Nastavení</h2></div>
           <button onClick={onClose} style={{background:'none',border:'none',color:t.muted,cursor:'pointer',display:'flex',padding:4}}>{Ic.x}</button>
@@ -611,17 +618,54 @@ function SettingsModal({t,themeName,setThemeName,sysPmt,setSysPmt,onClose,isLogg
               ))}
             </>
           )}
+          {tab==='tools'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Akce konverzace</div>
+              {isLoggedIn&&[
+                {icon:'🔗',label:'Sdílet konverzaci',desc:'Vygeneruje veřejný odkaz',action:()=>{shareConversation();onClose()}},
+                {icon:'📤',label:'Exportovat chat',desc:'Stáhne chat jako .txt',action:()=>{exportChat();onClose()}},
+                {icon:'🎯',label:'Moje cíle',desc:'Sledování osobních cílů',action:()=>{setShowGoals(true);onClose()}},
+                {icon:'🧠',label:'Přidat do paměti',desc:'Uložit informaci ručně',action:()=>{setShowAddMem(true);onClose()}},
+              ].map(item=>(
+                <button key={item.label} onClick={item.action}
+                  style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',borderRadius:10,background:t.btn,border:`1px solid ${t.border}`,cursor:'pointer',textAlign:'left',width:'100%',transition:'background .12s'}}
+                  onMouseOver={e=>e.currentTarget.style.background=t.active}
+                  onMouseOut={e=>e.currentTarget.style.background=t.btn}>
+                  <span style={{fontSize:18,width:24,textAlign:'center'}}>{item.icon}</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:500,color:t.txt}}>{item.label}</div>
+                    <div style={{fontSize:11,color:t.muted}}>{item.desc}</div>
+                  </div>
+                </button>
+              ))}
+              {!isLoggedIn&&<div style={{fontSize:12,color:t.muted,textAlign:'center',padding:'20px 0'}}>Přihlaste se pro přístup k nástrojům.</div>}
+            </div>
+          )}
           {tab==='about'&&(
             <div style={{fontSize:12,color:t.muted,lineHeight:1.7}}>
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:7,marginBottom:18}}>
                 <LumiAvatar size={52} gradient={[t.gradA,t.gradB]}/>
                 <div style={{textAlign:'center'}}><div style={{fontWeight:700,color:t.txt,fontSize:17}}>Lumi</div><span style={{background:'#f59e0b22',color:'#f59e0b',padding:'1px 8px',borderRadius:4,fontWeight:600,fontSize:11}}>BETA</span></div>
               </div>
-              {[['🤖 Chat','Gemma 4 31B (výchozí)'],['💭 Deep Thinking','Gemini 3.1 Flash Lite / 2.5 Pro'],['🌐 Web Search','Google Search (Gemini Grounding)'],['🎨 AI Obrázky','Pollinations.ai (3 modely)'],['📷 Fotografie','Unsplash / Pixabay'],['🌤️ Počasí','OpenMeteo (zdarma, bez API)'],['🎙️ Live','Gemini 3 Flash Live / 2.5 Native Audio'],['🧠 Auto-paměť','Detekce + Supabase PostgreSQL'],['📝 Drafty','Supabase auto-save'],['⏱ Focus Timer','Pomodoro vestavěný']].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'7px 11px',borderRadius:7,background:t.tag,border:`1px solid ${t.border}`,marginBottom:5}}>
-                  <span>{k}</span><span style={{color:t.accent,fontSize:11}}>{v}</span>
+              {[
+                ['🤖 AI Chat','Gemini 3.1 Flash Lite · 2.5 Flash · Gemma 4 31B'],
+                ['🌐 Web Search','SearXNG · Google CSE · DDG · Google News RSS'],
+                ['🎨 AI Obrázky','Pollinations.ai · FLUX · Grok Imagine · Qwen'],
+                ['📷 Fotografie','Unsplash · Pixabay'],
+                ['🌤️ Počasí','OpenMeteo · zdarma · bez API klíče'],
+                ['🎙️ Live Voice','Gemini 3 Flash Live · 2.5 Native Audio'],
+                ['🧠 Paměť','Supabase PostgreSQL · episodická paměť'],
+                ['💻 Lumi Code','Claude Sonnet (Anthropic) · 6 úkolů · 13 jazyků'],
+                ['🤝 Lumi Cowork','Claude + Gemini · úkoly · dokumenty · AI asistent'],
+                ['📁 Projekty','Vlastní system prompty · Supabase DB'],
+              ].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'7px 11px',borderRadius:7,background:t.tag,border:`1px solid ${t.border}`,marginBottom:5,gap:8}}>
+                  <span style={{color:t.txt}}>{k}</span><span style={{color:t.muted,fontSize:11,textAlign:'right'}}>{v}</span>
                 </div>
               ))}
+              <div style={{marginTop:12,fontSize:11,textAlign:'center',color:t.muted}}>
+                Edge Function v55 · React + Vite · Supabase · Vercel
+              </div>
             </div>
           )}
         </div>
@@ -1041,6 +1085,264 @@ function LumiCowork({t,token,onClose,callEdge}){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ── CONNECTORS — integrace (Claude Connectors styl) ───────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function ConnectorsModal({t,onClose,imgMode,setImgMode,imgModel,setImgModel,IMG_MODELS,
+  webSearchType,setWebSearchType,thinking,setThinking,memory,setMemory,
+  aiModel,setAiModel,AI_MODELS,writeStyle,setWriteStyle,
+  setShowLive,setShowLumiCode,setShowLumiCowork,isLoggedIn}){
+
+  const WRITE_STYLES=[
+    {id:null,   label:'Výchozí',    icon:'✦', desc:'Bez úprav stylu'},
+    {id:'concise',  label:'Stručně', icon:'⚡', desc:'Krátké a jasné odpovědi'},
+    {id:'detailed', label:'Detailně',icon:'📖', desc:'Kompletní vysvětlení'},
+    {id:'formal',   label:'Formálně',icon:'👔', desc:'Profesionální jazyk'},
+    {id:'casual',   label:'Casualně',icon:'😊', desc:'Neformální přátelský styl'},
+    {id:'technical',label:'Technicky',icon:'💻', desc:'Odborné termíny'},
+  ]
+
+  const CONNECTORS=[
+    {
+      id:'chat',
+      name:'AI Chat',
+      icon:'🤖',
+      color:'#6366f1',
+      desc:'Hlavní konverzační AI',
+      status:'always',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{fontSize:11,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:2}}>Model</div>
+          {AI_MODELS.map(m=>(
+            <div key={m.id} onClick={()=>setAiModel(m.id)}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:9,border:`1px solid ${aiModel===m.id?'#6366f1':t.border}`,background:aiModel===m.id?'#6366f118':t.btn,cursor:'pointer',transition:'all .12s'}}>
+              <span style={{fontSize:16}}>{m.id==='default'?'⚡':m.id==='gemini-25'?'🔷':m.id==='gemma4'?'✦':'💎'}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:aiModel===m.id?600:400,color:aiModel===m.id?'#6366f1':t.txt}}>{m.name}</div>
+                <div style={{fontSize:11,color:t.muted}}>{m.desc}</div>
+              </div>
+              {aiModel===m.id&&<span style={{color:'#6366f1',fontSize:16}}>✓</span>}
+            </div>
+          ))}
+          <div style={{marginTop:4,display:'flex',gap:6}}>
+            <div onClick={()=>setThinking(v=>!v)}
+              style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${thinking?'#8b5cf6':t.border}`,background:thinking?'#8b5cf618':t.btn,cursor:'pointer',textAlign:'center'}}>
+              <div style={{fontSize:13,color:thinking?'#8b5cf6':t.muted}}>💭 Přemýšlet</div>
+              <div style={{fontSize:10,color:t.muted}}>{thinking?'Zapnuto':'Vypnuto'}</div>
+            </div>
+            <div onClick={()=>setMemory(v=>!v)}
+              style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${memory?'#10b981':t.border}`,background:memory?'#10b98118':t.btn,cursor:'pointer',textAlign:'center'}}>
+              <div style={{fontSize:13,color:memory?'#10b981':t.muted}}>🧠 Paměť</div>
+              <div style={{fontSize:10,color:t.muted}}>{memory?'Aktivní':'Vypnuto'}</div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id:'style',
+      name:'Styl psaní',
+      icon:'✍️',
+      color:'#0891b2',
+      desc:'Jak má AI odpovídat',
+      status:'optional',
+      content:(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+          {WRITE_STYLES.map(s=>(
+            <div key={String(s.id)} onClick={()=>setWriteStyle(s.id)}
+              style={{padding:'9px 10px',borderRadius:9,border:`1px solid ${writeStyle===s.id?'#0891b2':t.border}`,background:writeStyle===s.id?'#0891b218':t.btn,cursor:'pointer',transition:'all .12s'}}>
+              <div style={{fontSize:15,marginBottom:2}}>{s.icon}</div>
+              <div style={{fontSize:12,fontWeight:writeStyle===s.id?600:400,color:writeStyle===s.id?'#0891b2':t.txt}}>{s.label}</div>
+              <div style={{fontSize:10,color:t.muted,lineHeight:1.3}}>{s.desc}</div>
+            </div>
+          ))}
+        </div>
+      )
+    },
+    {
+      id:'websearch',
+      name:'Web Search',
+      icon:'🌐',
+      color:'#10b981',
+      desc:'Prohledávání internetu',
+      status:'optional',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:2}}>Přidej /web nebo vyber mód v inputu. Zdroje:</div>
+          {[['web','🔍 Obecné vyhledávání','SearXNG + Google CSE'],['news','📰 Aktuální zprávy','Google News RSS'],['video','🎬 Videa','YouTube (Invidious)'],['image','🖼 Obrázky','Unsplash / Pixabay']].map(([id,label,src])=>(
+            <div key={id} onClick={()=>setWebSearchType(id)}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'8px 11px',borderRadius:8,border:`1px solid ${webSearchType===id?'#10b981':t.border}`,background:webSearchType===id?'#10b98118':t.btn,cursor:'pointer'}}>
+              <span style={{fontSize:15}}>{label.split(' ')[0]}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,color:webSearchType===id?'#10b981':t.txt}}>{label.slice(2)}</div>
+                <div style={{fontSize:10,color:t.muted}}>{src}</div>
+              </div>
+              {webSearchType===id&&<span style={{color:'#10b981'}}>✓</span>}
+            </div>
+          ))}
+        </div>
+      )
+    },
+    {
+      id:'images',
+      name:'AI Obrázky',
+      icon:'🎨',
+      color:'#ec4899',
+      desc:'Generování obrázků AI',
+      status:'optional',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {IMG_MODELS.map(m=>(
+            <div key={m.id} onClick={()=>{setImgModel(m.id);setImgMode('generate_image')}}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:9,border:`1px solid ${imgModel===m.id&&imgMode!=='chat'?'#ec4899':t.border}`,background:imgModel===m.id&&imgMode!=='chat'?'#ec489918':t.btn,cursor:'pointer'}}>
+              <span style={{fontSize:16}}>{m.icon||'🎨'}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:imgModel===m.id&&imgMode!=='chat'?600:400,color:imgModel===m.id&&imgMode!=='chat'?'#ec4899':t.txt}}>{m.name}</div>
+                <div style={{fontSize:10,color:t.muted}}>Pollinations.ai · zdarma</div>
+              </div>
+              {imgModel===m.id&&imgMode!=='chat'&&<span style={{color:'#ec4899'}}>✓</span>}
+            </div>
+          ))}
+          <button onClick={()=>{setImgMode('chat');setImgModel(IMG_MODELS[0].id)}}
+            style={{padding:'6px',borderRadius:7,background:imgMode==='chat'?'#ec489918':'transparent',border:`1px solid ${imgMode==='chat'?'#ec4899':t.border}`,color:imgMode==='chat'?'#ec4899':t.muted,fontSize:11,cursor:'pointer'}}>
+            {imgMode==='chat'?'✓ Obrázky vypnuty':'Vypnout generování obrázků'}
+          </button>
+        </div>
+      )
+    },
+    {
+      id:'weather',
+      name:'Počasí',
+      icon:'🌤️',
+      color:'#f59e0b',
+      desc:'OpenMeteo · zdarma',
+      status:'always',
+      content:(
+        <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>
+          <div style={{marginBottom:8}}>Počasí je vždy dostupné — stačí napsat:</div>
+          {['"Jaké je počasí v Brně?"','"Předpověď pro Prahu"','"Bude zítra pršet v Lednici?"'].map(q=>(
+            <div key={q} style={{padding:'5px 10px',background:t.btn,borderRadius:6,marginBottom:4,fontSize:12,color:t.txt,fontStyle:'italic'}}>{q}</div>
+          ))}
+          <div style={{fontSize:11,marginTop:6}}>Geocoding s podporou českého skloňování (50+ tvarů)</div>
+        </div>
+      )
+    },
+    {
+      id:'live',
+      name:'Live Voice',
+      icon:'🎙️',
+      color:'#ef4444',
+      desc:'Hlasový chat s AI',
+      status:'optional',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Mluv přímo s Lumi — hlasový vstup + odpovědi přečtené nahlas.</div>
+          <button onClick={()=>{setShowLive(true);onClose()}}
+            style={{padding:'10px',borderRadius:9,background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
+            🎙️ Spustit Live
+          </button>
+          <div style={{fontSize:11,color:t.muted}}>Modely: Gemini 3 Flash Live · 2.5 Native Audio</div>
+        </div>
+      )
+    },
+    {
+      id:'code',
+      name:'Lumi Code',
+      icon:'</>',
+      color:'#10b981',
+      desc:'AI kódový asistent · Claude API',
+      status:'tool',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Vysvětlení, refaktoring, testy, debug, konverze a psaní kódu. Pohání Claude Sonnet (Anthropic).</div>
+          <button onClick={()=>{setShowLumiCode(true);onClose()}}
+            style={{padding:'10px',borderRadius:9,background:'#10b981',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
+            {'</>'} Otevřít Lumi Code
+          </button>
+          <div style={{fontSize:11,color:t.muted}}>13 jazyků · 6 úkolů · Ctrl+Enter spouští</div>
+        </div>
+      )
+    },
+    {
+      id:'cowork',
+      name:'Lumi Cowork',
+      icon:'🤝',
+      color:'#f59e0b',
+      desc:'Produktivita · dokumenty · úkoly',
+      status:'tool',
+      content:(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Správa úkolů s prioritami, zpracování dokumentů (shrnutí, analýza, překlad) a AI produktivitní asistent.</div>
+          <button onClick={()=>{setShowLumiCowork(true);onClose()}}
+            style={{padding:'10px',borderRadius:9,background:'#f59e0b',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
+            🤝 Otevřít Lumi Cowork
+          </button>
+        </div>
+      )
+    },
+  ]
+
+  const[activeConn,setActiveConn]=useState(CONNECTORS[0].id)
+  const current=CONNECTORS.find(c=>c.id===activeConn)||CONNECTORS[0]
+
+  const STATUS_COLORS={always:'#10b981',optional:t.accent,tool:'#f59e0b'}
+  const STATUS_LABELS={always:'Vždy aktivní',optional:'Volitelné',tool:'Nástroj'}
+
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(5px)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(760px,97vw)',maxHeight:'88vh',display:'flex',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .18s ease',fontFamily:"'DM Sans',sans-serif"}}>
+        {/* Left nav */}
+        <div style={{width:220,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
+          <div style={{padding:'16px 14px 12px',borderBottom:`1px solid ${t.border}`}}>
+            <div style={{fontWeight:700,fontSize:15,color:t.txt}}>🔌 Connectors</div>
+            <div style={{fontSize:11,color:t.muted,marginTop:2}}>Integrace a nástroje</div>
+          </div>
+          <div style={{flex:1,overflow:'auto',padding:'6px'}}>
+            {CONNECTORS.map(c=>(
+              <div key={c.id} onClick={()=>setActiveConn(c.id)}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,cursor:'pointer',marginBottom:2,background:activeConn===c.id?t.active:'transparent',transition:'background .1s'}}>
+                <span style={{fontSize:16,width:22,textAlign:'center',fontFamily:c.icon==='</>'?'monospace':'inherit'}}>{c.icon}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:activeConn===c.id?600:400,color:activeConn===c.id?t.txt:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                </div>
+                <span style={{width:6,height:6,borderRadius:'50%',background:STATUS_COLORS[c.status],flexShrink:0}}/>
+              </div>
+            ))}
+          </div>
+          <div style={{padding:'10px 12px',borderTop:`1px solid ${t.border}`,fontSize:10,color:t.muted,lineHeight:1.5}}>
+            <div style={{display:'flex',gap:8,marginBottom:3}}>
+              <span>●</span><span style={{color:'#10b981'}}>Vždy aktivní</span>
+            </div>
+            <div style={{display:'flex',gap:8,marginBottom:3}}>
+              <span>●</span><span style={{color:t.accent}}>Volitelné</span>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <span>●</span><span style={{color:'#f59e0b'}}>Nástroj</span>
+            </div>
+          </div>
+        </div>
+        {/* Right content */}
+        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+            <span style={{fontSize:22,fontFamily:current.icon==='</>'?'monospace':'inherit'}}>{current.icon}</span>
+            <div>
+              <div style={{fontWeight:700,fontSize:15,color:t.txt}}>{current.name}</div>
+              <div style={{fontSize:11,color:t.muted}}>{current.desc}</div>
+            </div>
+            <span style={{marginLeft:'auto',fontSize:11,padding:'2px 9px',borderRadius:10,background:STATUS_COLORS[current.status]+'22',color:STATUS_COLORS[current.status],fontWeight:600}}>
+              {STATUS_LABELS[current.status]}
+            </span>
+            <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,marginLeft:4}}>✕</button>
+          </div>
+          <div style={{flex:1,overflow:'auto',padding:18}}>
+            {current.content}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ── GoalsModal — Sledování cílů (nápad 19) ────────────────────────────────────
 function GoalsModal({t,token,onClose,callEdge}){
   const[goals,setGoals]=useState([])
@@ -1228,6 +1530,7 @@ export default function Chat({session}){
   // ── LUMI CODE + LUMI COWORK ─────────────────────────────────────────────────
   const[showLumiCode,setShowLumiCode]=useState(false)
   const[showLumiCowork,setShowLumiCowork]=useState(false)
+  const[showConnectors,setShowConnectors]=useState(false)
   // ── ARTIFACTS (Claude AI styl) ──────────────────────────────────────────────
   const[artifact,setArtifact]=useState(null)       // {code, lang, title}
   const[artifactOpen,setArtifactOpen]=useState(false)
@@ -2098,31 +2401,83 @@ export default function Chat({session}){
               ))}
           </div>
 
-          <div style={{padding:'9px 10px',borderTop:`1px solid ${t.border}`}}>
-            {/* ── Lumi Code + Lumi Cowork ─────────────────────────────────── */}
-            <div style={{display:'flex',gap:5,marginBottom:8}}>
-              <button onClick={()=>setShowLumiCode(true)}
-                style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,background:'#10b98122',border:`1px solid #10b98144`,color:'#10b981',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                <span style={{fontSize:14}}>{'</>'}</span> Code
-              </button>
-              <button onClick={()=>setShowLumiCowork(true)}
-                style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,background:'#f59e0b22',border:`1px solid #f59e0b44`,color:'#f59e0b',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                <span style={{fontSize:14}}>🤝</span> Cowork
-              </button>
+          <div style={{padding:'6px 8px',borderTop:`1px solid ${t.border}`,display:'flex',flexDirection:'column',gap:1}}>
+
+            {/* ── CONNECTORS — Claude AI styl ─────────────────────────── */}
+            <div style={{padding:'5px 10px 3px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:10,color:t.muted,textTransform:'uppercase',letterSpacing:.7,fontWeight:600}}>Connectors</span>
+              <button onClick={()=>setShowConnectors(true)} style={{fontSize:10,color:t.accent,background:'none',border:'none',cursor:'pointer',padding:'1px 4px'}}>Spravovat</button>
             </div>
+
+            {/* Web Search */}
+            {[
+              {
+                icon:'🌐', name:'Web Search',
+                active:!!webSearchType,
+                sub:webSearchType?({web:'Obecné',news:'Zprávy',video:'Videa',image:'Obrázky'}[webSearchType]||'Zapnuto'):'Vypnuto',
+                color:'#10b981',
+                onToggle:()=>setWebSearchType(v=>v?null:'web')
+              },
+              {
+                icon:'🎨', name:'AI Obrázky',
+                active:imgMode!=='chat',
+                sub:imgMode!=='chat'?'Pollinations.ai':'Vypnuto',
+                color:'#ec4899',
+                onToggle:()=>setImgMode(m=>m==='chat'?'generate_image':'chat')
+              },
+              {
+                icon:'💭', name:'Extended Thinking',
+                active:thinking,
+                sub:thinking?'Gemini 2.5 Flash':'Vypnuto',
+                color:'#8b5cf6',
+                onToggle:()=>setThinking(v=>!v)
+              },
+              {
+                icon:'🎙️', name:'Live Voice',
+                active:false,
+                sub:'Klikni pro spuštění',
+                color:'#ef4444',
+                onToggle:()=>setShowLive(true),
+                isLink:true
+              },
+            ].map(conn=>(
+              <div key={conn.name}
+                onClick={conn.onToggle}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',borderRadius:8,cursor:'pointer',transition:'background .1s',userSelect:'none'}}
+                onMouseOver={e=>e.currentTarget.style.background=t.active}
+                onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                <div style={{width:22,height:22,borderRadius:6,background:conn.active?conn.color+'22':'transparent',border:`1px solid ${conn.active?conn.color:t.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,flexShrink:0,transition:'all .15s'}}>
+                  {conn.icon}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,color:conn.active?t.txt:t.muted,fontWeight:conn.active?500:400,transition:'all .15s'}}>{conn.name}</div>
+                  <div style={{fontSize:10,color:t.muted}}>{conn.sub}</div>
+                </div>
+                {conn.isLink
+                  ? <span style={{fontSize:11,color:t.muted}}>↗</span>
+                  : <div style={{width:28,height:15,borderRadius:8,background:conn.active?conn.color:t.btn,border:`1px solid ${conn.active?conn.color:t.border}`,position:'relative',flexShrink:0,transition:'all .2s'}}>
+                      <div style={{position:'absolute',top:2,left:conn.active?13:2,width:11,height:11,borderRadius:'50%',background:conn.active?'#fff':t.muted,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
+                    </div>
+                }
+              </div>
+            ))}
+
+            {/* Oddělovač */}
+            <div style={{height:1,background:t.border,margin:'4px 2px'}}/>
+
+            {/* User row */}
             {isLoggedIn?(
-              <div style={{display:'flex',alignItems:'center',gap:7}}>
-                <div style={{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${t.gradA}33,${t.gradB}33)`,border:`1px solid ${t.gradA}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:t.accent,flexShrink:0}}>{userInitial}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',borderRadius:8}}>
+                <div style={{width:28,height:28,borderRadius:7,background:`linear-gradient(135deg,${t.gradA},${t.gradB})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff',flexShrink:0}}>{userInitial}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:t.txt,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{session.user.user_metadata?.full_name||session.user.email}</div>
-                  <div style={{fontSize:10,color:t.muted}}>Přihlášen</div>
                 </div>
-                <button className="ib" onClick={()=>supabase.auth.signOut()} style={{color:t.muted,display:'flex',padding:3}} title="Odhlásit">{Ic.out}</button>
+                <button className="ib" onClick={()=>setShowSet(true)} style={{color:t.muted,display:'flex',padding:4}} title="Nastavení">{Ic.gear}</button>
+                <button className="ib" onClick={()=>supabase.auth.signOut()} style={{color:t.muted,display:'flex',padding:4}} title="Odhlásit">{Ic.out}</button>
               </div>
             ):(
-              <button onClick={()=>setShowAuth(true)} style={{width:'100%',display:'flex',alignItems:'center',gap:7,padding:'8px 11px',borderRadius:8,background:t.btn,border:`1px solid ${t.border}`,color:t.muted,fontSize:13,fontWeight:500,cursor:'pointer'}}>
-                <span style={{color:t.accent}}>{Ic.user}</span><span>Přihlásit se</span>
-                <span style={{marginLeft:'auto',fontSize:10,background:t.tag,padding:'2px 6px',borderRadius:3}}>Uloží historii</span>
+              <button onClick={()=>setShowAuth(true)} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,background:t.accent+'18',border:'none',color:t.accent,fontSize:13,fontWeight:600,cursor:'pointer',width:'100%'}}>
+                <span>{Ic.user}</span><span>Přihlásit se</span>
               </button>
             )}
           </div>
@@ -2136,25 +2491,21 @@ export default function Chat({session}){
         {/* Drag overlay */}
         {isDragging&&<div style={{position:'absolute',inset:0,zIndex:60,background:t.accent+'22',border:`2px dashed ${t.accent}`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)',pointerEvents:'none'}}><div style={{textAlign:'center',color:t.accent}}><div style={{fontSize:38,marginBottom:8}}>📎</div><div style={{fontSize:15,fontWeight:600}}>Přetáhni soubory sem</div></div></div>}
 
-        {/* ── HEADER — Gemini style ───────────────────────────────────────── */}
+        {/* ── HEADER — Claude style ───────────────────────────────────────── */}
         <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 14px',height:50,background:t.hdr,borderBottom:`1px solid ${t.border}`,backdropFilter:'blur(12px)',flexShrink:0,gap:7}}>
           <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
             <button className="ib" onClick={()=>setSideOpen(o=>!o)} style={{color:t.muted,display:'flex',padding:5,flexShrink:0}}>{Ic.menu}</button>
-            <span style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:t.txt}}>{activeConv?.title||'Lumi'}</span>
-            {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 6px',borderRadius:4,flexShrink:0,animation:'thinkPulse 1.5s infinite'}}>💭</span>}
+            <span style={{fontWeight:500,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:t.txt}}>{activeConv?.title||'Lumi'}</span>
+            {thinking&&<span style={{fontSize:10,background:t.purple+'22',color:t.purple,padding:'2px 6px',borderRadius:4,flexShrink:0}}>💭</span>}
+            {activeProject&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:10,background:activeProject.color+'22',color:activeProject.color,fontWeight:500}}>{activeProject.icon} {activeProject.name}</span>}
           </div>
           <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-            {isLoggedIn&&<button className="ib" onClick={shareConversation} title="Sdílet konverzaci" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>🔗</button>}
-            {isLoggedIn&&<button className="ib" onClick={()=>setShowGoals(true)} title="Moje cíle" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>🎯</button>}
-            {isLoggedIn&&<button className="ib" onClick={()=>setShowAddMem(true)} title="Přidat do paměti" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.addMem}</button>}
-            <button className="ib" onClick={()=>setShowStarred(s=>!s)} title="Oblíbené" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:showStarred?'#f59e0b22':t.btn,color:showStarred?'#f59e0b':t.muted,border:`1px solid ${showStarred?'#f59e0b':t.border}`}}>{showStarred?Ic.starF:Ic.star}</button>
-            <button className="ib" onClick={exportChat} title="Export" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.export}</button>
             <button className="ib" onClick={()=>setMdMode(m=>!m)} title="Markdown" style={{display:'flex',alignItems:'center',padding:'5px 7px',borderRadius:7,background:mdMode?t.accent+'22':t.btn,color:mdMode?t.accent:t.muted,border:`1px solid ${mdMode?t.accent:t.border}`,fontSize:11}}>MD</button>
-            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.gear}</button>
             <button className="ib" onClick={()=>setThemeName(n=>{const ks=Object.keys(THEMES);return ks[(ks.indexOf(n)+1)%ks.length]})} title="Téma" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:14}}>
               {THEME_LIST.find(th=>th.id===themeName)?.icon||'🎨'}
             </button>
-            {!isLoggedIn&&<button onClick={()=>setShowAuth(true)} style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,cursor:'pointer'}}>{Ic.user}</button>}
+            <button className="ib" onClick={()=>setShowSet(true)} title="Nastavení" style={{display:'flex',padding:'5px 7px',borderRadius:7,background:t.btn,color:t.muted,border:`1px solid ${t.border}`}}>{Ic.gear}</button>
+            {!isLoggedIn&&<button onClick={()=>setShowAuth(true)} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:7,background:t.accent,color:'#fff',border:'none',cursor:'pointer',fontSize:12,fontWeight:600}}>Přihlásit se</button>}
           </div>
         </header>
 
@@ -2163,11 +2514,6 @@ export default function Chat({session}){
           <span style={{color:t.purple,flexShrink:0,marginTop:1}}>{Ic.info}</span>
           <span style={{color:t.txt,flex:1,lineHeight:1.5}}>{explainTxt}</span>
           <button onClick={()=>setExplainTxt(null)} style={{color:t.muted,display:'flex',padding:3,flexShrink:0,background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
-        </div>}
-
-        {showStarred&&<div style={{padding:'6px 13px',background:'#f59e0b22',borderBottom:`1px solid #f59e0b44`,display:'flex',alignItems:'center',gap:7,fontSize:12}}>
-          <span style={{color:'#f59e0b'}}>⭐</span><span style={{color:t.txt}}>Oblíbené ({displayMsgs.length})</span>
-          <button onClick={()=>setShowStarred(false)} style={{color:t.muted,display:'flex',padding:3,marginLeft:'auto',background:'none',border:'none',cursor:'pointer'}}>{Ic.x}</button>
         </div>}
 
         {/* ── MESSAGES ─────────────────────────────────────────────────────── */}
@@ -2554,7 +2900,17 @@ export default function Chat({session}){
       )}
       </div>{/* konec MAIN + ARTIFACT wrapper */}
       {showAuth   &&<AuthModal onClose={()=>setShowAuth(false)} dark={t.isDark}/>}
-      {showSet    &&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory}/>}
+      {showSet&&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory} shareConversation={shareConversation} exportChat={exportChat} setShowGoals={setShowGoals} setShowAddMem={setShowAddMem}/>}
+      {showConnectors&&<ConnectorsModal t={t} onClose={()=>setShowConnectors(false)}
+        imgMode={imgMode} setImgMode={setImgMode} imgModel={imgModel} setImgModel={setImgModel} IMG_MODELS={IMG_MODELS}
+        webSearchType={webSearchType} setWebSearchType={setWebSearchType}
+        thinking={thinking} setThinking={setThinking}
+        memory={memory} setMemory={setMemory}
+        aiModel={aiModel} setAiModel={setAiModel} AI_MODELS={AI_MODELS}
+        writeStyle={writeStyle} setWriteStyle={setWriteStyle}
+        setShowLive={setShowLive} setShowLumiCode={setShowLumiCode} setShowLumiCowork={setShowLumiCowork}
+        isLoggedIn={isLoggedIn}
+      />}
       {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
       {showAddMem &&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
 
