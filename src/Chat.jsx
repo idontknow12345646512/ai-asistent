@@ -1085,263 +1085,361 @@ function LumiCowork({t,token,onClose,callEdge}){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ── CONNECTORS — integrace (Claude Connectors styl) ───────────────────────────
+// ── CONNECTORS — External Service Integrations (Claude Connectors styl) ───────
 // ══════════════════════════════════════════════════════════════════════════════
-function ConnectorsModal({t,onClose,imgMode,setImgMode,imgModel,setImgModel,IMG_MODELS,
-  webSearchType,setWebSearchType,thinking,setThinking,memory,setMemory,
-  aiModel,setAiModel,AI_MODELS,writeStyle,setWriteStyle,
-  setShowLive,setShowLumiCode,setShowLumiCowork,isLoggedIn}){
+const CONNECTOR_DEFS=[
+  {
+    id:'github',
+    name:'GitHub',
+    icon:'🐙',
+    color:'#333',
+    darkColor:'#e2e8f0',
+    category:'Vývoj',
+    desc:'Repozitáře, issues, pull requesty a kód',
+    authType:'api_key',
+    keyLabel:'Personal Access Token',
+    keyPlaceholder:'ghp_xxxxxxxxxxxxxxxxxxxx',
+    keyHelp:'Vytvoř token na github.com/settings/tokens (scope: repo, read:user)',
+    actions:['Zobraz moje repos','Otevřené issues','Nedávné commity','Hledej v kódu'],
+    docsUrl:'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
+  },
+  {
+    id:'notion',
+    name:'Notion',
+    icon:'📝',
+    color:'#000',
+    darkColor:'#e2e8f0',
+    category:'Produktivita',
+    desc:'Stránky, databáze, poznámky a dokumenty',
+    authType:'api_key',
+    keyLabel:'Integration Token',
+    keyPlaceholder:'secret_xxxxxxxxxxxxxxxxxxxx',
+    keyHelp:'Vytvoř integraci na notion.so/my-integrations a sdílej stránky s integrací',
+    actions:['Hledej v Notion','Zobraz stránky','Vytvoř poznámku','Přidej do databáze'],
+    docsUrl:'https://developers.notion.com/docs/authorization',
+  },
+  {
+    id:'google_drive',
+    name:'Google Drive',
+    icon:'📁',
+    color:'#1a73e8',
+    darkColor:'#4da6ff',
+    category:'Soubory',
+    desc:'Dokumenty, tabulky, prezentace a soubory',
+    authType:'oauth',
+    keyLabel:'',
+    keyPlaceholder:'',
+    keyHelp:'Přihlašuje se přes Google OAuth (Google API Console)',
+    actions:['Hledej soubory','Zobraz dokumenty','Vytvoř dokument','Sdílej soubor'],
+    comingSoon:true,
+  },
+  {
+    id:'slack',
+    name:'Slack',
+    icon:'💬',
+    color:'#4a154b',
+    darkColor:'#e879f9',
+    category:'Komunikace',
+    desc:'Zprávy, kanály a pracovní prostory',
+    authType:'api_key',
+    keyLabel:'Bot User OAuth Token',
+    keyPlaceholder:'xoxb-xxxxxxxxxxxxxxxxxxxx',
+    keyHelp:'Vytvoř Slack App na api.slack.com/apps, přidej Bot Token Scopes',
+    actions:['Hledej zprávy','Zobraz kanály','Pošli zprávu','Shrni konverzaci'],
+    docsUrl:'https://api.slack.com/authentication/token-types',
+  },
+  {
+    id:'rss',
+    name:'RSS / Novinky',
+    icon:'📡',
+    color:'#f59e0b',
+    darkColor:'#fbbf24',
+    category:'Obsah',
+    desc:'Sleduj libovolné RSS/Atom zdroje zpráv',
+    authType:'url',
+    keyLabel:'RSS Feed URL',
+    keyPlaceholder:'https://example.com/feed.xml',
+    keyHelp:'Zadej URL RSS nebo Atom feedu — funguje s většinou zpravodajských webů',
+    actions:['Nejnovější články','Shrnutí dne','Hledej v článcích'],
+  },
+  {
+    id:'spotify',
+    name:'Spotify',
+    icon:'🎵',
+    color:'#1db954',
+    darkColor:'#1db954',
+    category:'Zábava',
+    desc:'Hudba, playlisty a doporučení',
+    authType:'oauth',
+    keyLabel:'',
+    keyPlaceholder:'',
+    keyHelp:'Vyžaduje Spotify OAuth přihlášení (Spotify Developer Dashboard)',
+    actions:['Co hraje','Moje playlisty','Doporučení','Hledej skladbu'],
+    comingSoon:true,
+  },
+  {
+    id:'jira',
+    name:'Jira',
+    icon:'🔵',
+    color:'#0052cc',
+    darkColor:'#4da6ff',
+    category:'Vývoj',
+    desc:'Tickety, projekty a sprinty',
+    authType:'api_key',
+    keyLabel:'API Token',
+    keyPlaceholder:'ATATT3xFfGF0xxxxxxxxxxxxxxxx',
+    keyHelp:'Vytvoř token na id.atlassian.com/manage-profile/security/api-tokens. Také vyplň svůj email a Jira doménu v konfiguraci.',
+    actions:['Moje tickety','Otevřené bugy','Sprint overview','Vytvoř issue'],
+    extraFields:[
+      {id:'email',label:'Atlassian email',placeholder:'jmeno@firma.cz'},
+      {id:'domain',label:'Jira doména',placeholder:'firma.atlassian.net'},
+    ],
+    docsUrl:'https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/',
+  },
+  {
+    id:'openweather',
+    name:'OpenWeatherMap',
+    icon:'⛅',
+    color:'#eb6e4b',
+    darkColor:'#fb923c',
+    category:'Data',
+    desc:'Přesnější počasí s historií a předpovědí 16 dnů',
+    authType:'api_key',
+    keyLabel:'API Key',
+    keyPlaceholder:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    keyHelp:'Registrace na openweathermap.org/api — free tier dává 1000 volání/den',
+    actions:['Počasí nyní','Předpověď 16 dnů','Historická data','Vzduch a pyl'],
+    docsUrl:'https://openweathermap.org/appid',
+  },
+]
 
-  const WRITE_STYLES=[
-    {id:null,   label:'Výchozí',    icon:'✦', desc:'Bez úprav stylu'},
-    {id:'concise',  label:'Stručně', icon:'⚡', desc:'Krátké a jasné odpovědi'},
-    {id:'detailed', label:'Detailně',icon:'📖', desc:'Kompletní vysvětlení'},
-    {id:'formal',   label:'Formálně',icon:'👔', desc:'Profesionální jazyk'},
-    {id:'casual',   label:'Casualně',icon:'😊', desc:'Neformální přátelský styl'},
-    {id:'technical',label:'Technicky',icon:'💻', desc:'Odborné termíny'},
-  ]
+function ConnectorsModal({t,onClose,token,callEdge,isLoggedIn}){
+  const[connectors,setConnectors]=useState({})   // {connector_id: {api_key, config, enabled}}
+  const[selected,setSelected]=useState(CONNECTOR_DEFS[0].id)
+  const[apiKey,setApiKey]=useState('')
+  const[extraFields,setExtraFields]=useState({})
+  const[saving,setSaving]=useState(false)
+  const[testing,setTesting]=useState(false)
+  const[testResult,setTestResult]=useState(null)
+  const[filter,setFilter]=useState('Vše')
+  const[err,setErr]=useState(null)
 
-  const CONNECTORS=[
-    {
-      id:'chat',
-      name:'AI Chat',
-      icon:'🤖',
-      color:'#6366f1',
-      desc:'Hlavní konverzační AI',
-      status:'always',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <div style={{fontSize:11,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:2}}>Model</div>
-          {AI_MODELS.map(m=>(
-            <div key={m.id} onClick={()=>setAiModel(m.id)}
-              style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:9,border:`1px solid ${aiModel===m.id?'#6366f1':t.border}`,background:aiModel===m.id?'#6366f118':t.btn,cursor:'pointer',transition:'all .12s'}}>
-              <span style={{fontSize:16}}>{m.id==='default'?'⚡':m.id==='gemini-25'?'🔷':m.id==='gemma4'?'✦':'💎'}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:aiModel===m.id?600:400,color:aiModel===m.id?'#6366f1':t.txt}}>{m.name}</div>
-                <div style={{fontSize:11,color:t.muted}}>{m.desc}</div>
-              </div>
-              {aiModel===m.id&&<span style={{color:'#6366f1',fontSize:16}}>✓</span>}
-            </div>
-          ))}
-          <div style={{marginTop:4,display:'flex',gap:6}}>
-            <div onClick={()=>setThinking(v=>!v)}
-              style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${thinking?'#8b5cf6':t.border}`,background:thinking?'#8b5cf618':t.btn,cursor:'pointer',textAlign:'center'}}>
-              <div style={{fontSize:13,color:thinking?'#8b5cf6':t.muted}}>💭 Přemýšlet</div>
-              <div style={{fontSize:10,color:t.muted}}>{thinking?'Zapnuto':'Vypnuto'}</div>
-            </div>
-            <div onClick={()=>setMemory(v=>!v)}
-              style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${memory?'#10b981':t.border}`,background:memory?'#10b98118':t.btn,cursor:'pointer',textAlign:'center'}}>
-              <div style={{fontSize:13,color:memory?'#10b981':t.muted}}>🧠 Paměť</div>
-              <div style={{fontSize:10,color:t.muted}}>{memory?'Aktivní':'Vypnuto'}</div>
-            </div>
-          </div>
-        </div>
-      )
-    },
-    {
-      id:'style',
-      name:'Styl psaní',
-      icon:'✍️',
-      color:'#0891b2',
-      desc:'Jak má AI odpovídat',
-      status:'optional',
-      content:(
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-          {WRITE_STYLES.map(s=>(
-            <div key={String(s.id)} onClick={()=>setWriteStyle(s.id)}
-              style={{padding:'9px 10px',borderRadius:9,border:`1px solid ${writeStyle===s.id?'#0891b2':t.border}`,background:writeStyle===s.id?'#0891b218':t.btn,cursor:'pointer',transition:'all .12s'}}>
-              <div style={{fontSize:15,marginBottom:2}}>{s.icon}</div>
-              <div style={{fontSize:12,fontWeight:writeStyle===s.id?600:400,color:writeStyle===s.id?'#0891b2':t.txt}}>{s.label}</div>
-              <div style={{fontSize:10,color:t.muted,lineHeight:1.3}}>{s.desc}</div>
-            </div>
-          ))}
-        </div>
-      )
-    },
-    {
-      id:'websearch',
-      name:'Web Search',
-      icon:'🌐',
-      color:'#10b981',
-      desc:'Prohledávání internetu',
-      status:'optional',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          <div style={{fontSize:11,color:t.muted,marginBottom:2}}>Přidej /web nebo vyber mód v inputu. Zdroje:</div>
-          {[['web','🔍 Obecné vyhledávání','SearXNG + Google CSE'],['news','📰 Aktuální zprávy','Google News RSS'],['video','🎬 Videa','YouTube (Invidious)'],['image','🖼 Obrázky','Unsplash / Pixabay']].map(([id,label,src])=>(
-            <div key={id} onClick={()=>setWebSearchType(id)}
-              style={{display:'flex',alignItems:'center',gap:10,padding:'8px 11px',borderRadius:8,border:`1px solid ${webSearchType===id?'#10b981':t.border}`,background:webSearchType===id?'#10b98118':t.btn,cursor:'pointer'}}>
-              <span style={{fontSize:15}}>{label.split(' ')[0]}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12,color:webSearchType===id?'#10b981':t.txt}}>{label.slice(2)}</div>
-                <div style={{fontSize:10,color:t.muted}}>{src}</div>
-              </div>
-              {webSearchType===id&&<span style={{color:'#10b981'}}>✓</span>}
-            </div>
-          ))}
-        </div>
-      )
-    },
-    {
-      id:'images',
-      name:'AI Obrázky',
-      icon:'🎨',
-      color:'#ec4899',
-      desc:'Generování obrázků AI',
-      status:'optional',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          {IMG_MODELS.map(m=>(
-            <div key={m.id} onClick={()=>{setImgModel(m.id);setImgMode('generate_image')}}
-              style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:9,border:`1px solid ${imgModel===m.id&&imgMode!=='chat'?'#ec4899':t.border}`,background:imgModel===m.id&&imgMode!=='chat'?'#ec489918':t.btn,cursor:'pointer'}}>
-              <span style={{fontSize:16}}>{m.icon||'🎨'}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12,fontWeight:imgModel===m.id&&imgMode!=='chat'?600:400,color:imgModel===m.id&&imgMode!=='chat'?'#ec4899':t.txt}}>{m.name}</div>
-                <div style={{fontSize:10,color:t.muted}}>Pollinations.ai · zdarma</div>
-              </div>
-              {imgModel===m.id&&imgMode!=='chat'&&<span style={{color:'#ec4899'}}>✓</span>}
-            </div>
-          ))}
-          <button onClick={()=>{setImgMode('chat');setImgModel(IMG_MODELS[0].id)}}
-            style={{padding:'6px',borderRadius:7,background:imgMode==='chat'?'#ec489918':'transparent',border:`1px solid ${imgMode==='chat'?'#ec4899':t.border}`,color:imgMode==='chat'?'#ec4899':t.muted,fontSize:11,cursor:'pointer'}}>
-            {imgMode==='chat'?'✓ Obrázky vypnuty':'Vypnout generování obrázků'}
-          </button>
-        </div>
-      )
-    },
-    {
-      id:'weather',
-      name:'Počasí',
-      icon:'🌤️',
-      color:'#f59e0b',
-      desc:'OpenMeteo · zdarma',
-      status:'always',
-      content:(
-        <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>
-          <div style={{marginBottom:8}}>Počasí je vždy dostupné — stačí napsat:</div>
-          {['"Jaké je počasí v Brně?"','"Předpověď pro Prahu"','"Bude zítra pršet v Lednici?"'].map(q=>(
-            <div key={q} style={{padding:'5px 10px',background:t.btn,borderRadius:6,marginBottom:4,fontSize:12,color:t.txt,fontStyle:'italic'}}>{q}</div>
-          ))}
-          <div style={{fontSize:11,marginTop:6}}>Geocoding s podporou českého skloňování (50+ tvarů)</div>
-        </div>
-      )
-    },
-    {
-      id:'live',
-      name:'Live Voice',
-      icon:'🎙️',
-      color:'#ef4444',
-      desc:'Hlasový chat s AI',
-      status:'optional',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Mluv přímo s Lumi — hlasový vstup + odpovědi přečtené nahlas.</div>
-          <button onClick={()=>{setShowLive(true);onClose()}}
-            style={{padding:'10px',borderRadius:9,background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
-            🎙️ Spustit Live
-          </button>
-          <div style={{fontSize:11,color:t.muted}}>Modely: Gemini 3 Flash Live · 2.5 Native Audio</div>
-        </div>
-      )
-    },
-    {
-      id:'code',
-      name:'Lumi Code',
-      icon:'</>',
-      color:'#10b981',
-      desc:'AI kódový asistent · Claude API',
-      status:'tool',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Vysvětlení, refaktoring, testy, debug, konverze a psaní kódu. Pohání Claude Sonnet (Anthropic).</div>
-          <button onClick={()=>{setShowLumiCode(true);onClose()}}
-            style={{padding:'10px',borderRadius:9,background:'#10b981',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
-            {'</>'} Otevřít Lumi Code
-          </button>
-          <div style={{fontSize:11,color:t.muted}}>13 jazyků · 6 úkolů · Ctrl+Enter spouští</div>
-        </div>
-      )
-    },
-    {
-      id:'cowork',
-      name:'Lumi Cowork',
-      icon:'🤝',
-      color:'#f59e0b',
-      desc:'Produktivita · dokumenty · úkoly',
-      status:'tool',
-      content:(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <div style={{fontSize:13,color:t.muted,lineHeight:1.6}}>Správa úkolů s prioritami, zpracování dokumentů (shrnutí, analýza, překlad) a AI produktivitní asistent.</div>
-          <button onClick={()=>{setShowLumiCowork(true);onClose()}}
-            style={{padding:'10px',borderRadius:9,background:'#f59e0b',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontWeight:700}}>
-            🤝 Otevřít Lumi Cowork
-          </button>
-        </div>
-      )
-    },
-  ]
+  const def=CONNECTOR_DEFS.find(d=>d.id===selected)||CONNECTOR_DEFS[0]
+  const conn=connectors[selected]
+  const isConnected=!!conn?.api_key||!!conn?.config?.url
 
-  const[activeConn,setActiveConn]=useState(CONNECTORS[0].id)
-  const current=CONNECTORS.find(c=>c.id===activeConn)||CONNECTORS[0]
+  const CATS=['Vše',...[...new Set(CONNECTOR_DEFS.map(d=>d.category))]]
 
-  const STATUS_COLORS={always:'#10b981',optional:t.accent,tool:'#f59e0b'}
-  const STATUS_LABELS={always:'Vždy aktivní',optional:'Volitelné',tool:'Nástroj'}
+  // Načti uložené connectors z DB
+  useEffect(()=>{
+    if(!isLoggedIn||!token)return
+    callEdge('get_connectors',{},token).then(d=>{
+      if(d.connectors){
+        const map={}
+        d.connectors.forEach(c=>{map[c.connector_id]={api_key:c.api_key||'',config:c.config||{},enabled:c.enabled}})
+        setConnectors(map)
+      }
+    }).catch(()=>{})
+  },[isLoggedIn,token]) // eslint-disable-line
+
+  // Sync form při změně selected
+  useEffect(()=>{
+    const c=connectors[selected]
+    if(c){
+      setApiKey(c.api_key||c.config?.url||'')
+      const ef={}
+      def.extraFields?.forEach(f=>{ef[f.id]=c.config?.[f.id]||''})
+      setExtraFields(ef)
+    }else{
+      setApiKey('');setExtraFields({})
+    }
+    setTestResult(null);setErr(null)
+  },[selected,connectors]) // eslint-disable-line
+
+  const save=async()=>{
+    if(!isLoggedIn){setErr('Přihlaste se pro ukládání connectorů.');return}
+    setSaving(true);setErr(null)
+    try{
+      const config={...extraFields}
+      if(def.authType==='url')config.url=apiKey
+      await callEdge('save_connector',{
+        connector_id:selected,
+        api_key:def.authType!=='url'?apiKey:'',
+        config,
+        enabled:true
+      },token)
+      setConnectors(p=>({...p,[selected]:{api_key:apiKey,config,enabled:true}}))
+      setTestResult({ok:true,msg:'Uloženo úspěšně!'})
+    }catch(e){setErr('Chyba ukládání: '+e.message)}
+    setSaving(false)
+  }
+
+  const disconnect=async()=>{
+    if(!isLoggedIn)return
+    setSaving(true)
+    try{
+      await callEdge('delete_connector',{connector_id:selected},token)
+      setConnectors(p=>{const n={...p};delete n[selected];return n})
+      setApiKey('');setExtraFields({});setTestResult(null)
+    }catch(e){setErr('Chyba: '+e.message)}
+    setSaving(false)
+  }
+
+  const testConn=async()=>{
+    if(!apiKey.trim()){setErr('Zadej API klíč nebo URL.');return}
+    setTesting(true);setTestResult(null);setErr(null)
+    try{
+      const d=await callEdge('test_connector',{connector_id:selected,api_key:apiKey,config:{...extraFields}},token)
+      setTestResult({ok:!d.error,msg:d.error||d.message||'Připojení OK!'})
+    }catch(e){setTestResult({ok:false,msg:'Chyba: '+e.message})}
+    setTesting(false)
+  }
+
+  const filtered=CONNECTOR_DEFS.filter(d=>filter==='Vše'||d.category===filter)
 
   return(
-    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(5px)'}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:'min(760px,97vw)',maxHeight:'88vh',display:'flex',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .18s ease',fontFamily:"'DM Sans',sans-serif"}}>
-        {/* Left nav */}
-        <div style={{width:220,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0}}>
-          <div style={{padding:'16px 14px 12px',borderBottom:`1px solid ${t.border}`}}>
-            <div style={{fontWeight:700,fontSize:15,color:t.txt}}>🔌 Connectors</div>
-            <div style={{fontSize:11,color:t.muted,marginTop:2}}>Integrace a nástroje</div>
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.65)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(5px)'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(820px,97vw)',height:'min(600px,92vh)',display:'flex',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .18s ease',fontFamily:"'DM Sans',sans-serif"}}>
+
+        {/* ── Levý panel — seznam connectorů ── */}
+        <div style={{width:230,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0,background:t.card}}>
+          <div style={{padding:'14px 14px 10px',borderBottom:`1px solid ${t.border}`}}>
+            <div style={{fontWeight:700,fontSize:15,color:t.txt,marginBottom:8}}>🔌 Connectors</div>
+            {/* Kategorie filtry */}
+            <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+              {CATS.map(c=>(
+                <button key={c} onClick={()=>setFilter(c)}
+                  style={{padding:'2px 7px',borderRadius:6,fontSize:10,border:`1px solid ${filter===c?t.accent:t.border}`,background:filter===c?t.accent+'22':'transparent',color:filter===c?t.accent:t.muted,cursor:'pointer',fontFamily:'inherit',fontWeight:filter===c?600:400}}>
+                  {c}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{flex:1,overflow:'auto',padding:'6px'}}>
-            {CONNECTORS.map(c=>(
-              <div key={c.id} onClick={()=>setActiveConn(c.id)}
-                style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,cursor:'pointer',marginBottom:2,background:activeConn===c.id?t.active:'transparent',transition:'background .1s'}}>
-                <span style={{fontSize:16,width:22,textAlign:'center',fontFamily:c.icon==='</>'?'monospace':'inherit'}}>{c.icon}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:activeConn===c.id?600:400,color:activeConn===c.id?t.txt:t.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+          <div style={{flex:1,overflow:'auto'}}>
+            {filtered.map(d=>{
+              const c=connectors[d.id]
+              const connected=!!c?.api_key||!!c?.config?.url
+              return(
+                <div key={d.id} onClick={()=>setSelected(d.id)}
+                  style={{display:'flex',alignItems:'center',gap:9,padding:'9px 13px',cursor:'pointer',background:selected===d.id?t.active:'transparent',borderLeft:`2px solid ${selected===d.id?t.accent:'transparent'}`,transition:'all .1s'}}>
+                  <span style={{fontSize:18,width:24,textAlign:'center'}}>{d.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:selected===d.id?600:400,color:selected===d.id?t.txt:t.muted,display:'flex',alignItems:'center',gap:4}}>
+                      {d.name}
+                      {d.comingSoon&&<span style={{fontSize:9,background:'#f59e0b22',color:'#f59e0b',padding:'0 4px',borderRadius:3}}>brzy</span>}
+                    </div>
+                    <div style={{fontSize:10,color:t.muted}}>{d.category}</div>
+                  </div>
+                  <div style={{width:7,height:7,borderRadius:'50%',background:connected?'#10b981':t.border,flexShrink:0}}/>
                 </div>
-                <span style={{width:6,height:6,borderRadius:'50%',background:STATUS_COLORS[c.status],flexShrink:0}}/>
-              </div>
-            ))}
+              )
+            })}
           </div>
-          <div style={{padding:'10px 12px',borderTop:`1px solid ${t.border}`,fontSize:10,color:t.muted,lineHeight:1.5}}>
-            <div style={{display:'flex',gap:8,marginBottom:3}}>
-              <span>●</span><span style={{color:'#10b981'}}>Vždy aktivní</span>
-            </div>
-            <div style={{display:'flex',gap:8,marginBottom:3}}>
-              <span>●</span><span style={{color:t.accent}}>Volitelné</span>
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              <span>●</span><span style={{color:'#f59e0b'}}>Nástroj</span>
-            </div>
+          <div style={{padding:'10px 13px',borderTop:`1px solid ${t.border}`,fontSize:10,color:t.muted}}>
+            <div>🟢 Připojeno: {Object.keys(connectors).length}</div>
           </div>
         </div>
-        {/* Right content */}
+
+        {/* ── Pravý panel — detail connectoru ── */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
-            <span style={{fontSize:22,fontFamily:current.icon==='</>'?'monospace':'inherit'}}>{current.icon}</span>
-            <div>
-              <div style={{fontWeight:700,fontSize:15,color:t.txt}}>{current.name}</div>
-              <div style={{fontSize:11,color:t.muted}}>{current.desc}</div>
+          {/* Header */}
+          <div style={{display:'flex',alignItems:'center',gap:11,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+            <span style={{fontSize:26}}>{def.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:16,color:t.txt,display:'flex',alignItems:'center',gap:8}}>
+                {def.name}
+                {def.comingSoon&&<span style={{fontSize:10,background:'#f59e0b22',color:'#f59e0b',padding:'1px 8px',borderRadius:4,fontWeight:500}}>Brzy dostupné</span>}
+                {isConnected&&<span style={{fontSize:10,background:'#10b98122',color:'#10b981',padding:'1px 8px',borderRadius:4,fontWeight:600}}>● Připojeno</span>}
+              </div>
+              <div style={{fontSize:12,color:t.muted,marginTop:1}}>{def.desc}</div>
             </div>
-            <span style={{marginLeft:'auto',fontSize:11,padding:'2px 9px',borderRadius:10,background:STATUS_COLORS[current.status]+'22',color:STATUS_COLORS[current.status],fontWeight:600}}>
-              {STATUS_LABELS[current.status]}
-            </span>
-            <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,marginLeft:4}}>✕</button>
+            <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1}}>✕</button>
           </div>
-          <div style={{flex:1,overflow:'auto',padding:18}}>
-            {current.content}
+
+          {/* Content */}
+          <div style={{flex:1,overflow:'auto',padding:'16px 20px'}}>
+            {def.comingSoon?(
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12,color:t.muted}}>
+                <span style={{fontSize:48}}>{def.icon}</span>
+                <div style={{fontSize:16,fontWeight:600,color:t.txt}}>{def.name} — Brzy dostupné</div>
+                <div style={{fontSize:13,textAlign:'center',maxWidth:300,lineHeight:1.6}}>{def.keyHelp}</div>
+              </div>
+            ):(
+              <>
+                {/* Auth forma */}
+                {!isLoggedIn&&<div style={{padding:'10px 13px',background:'#f59e0b18',border:'1px solid #f59e0b44',borderRadius:8,fontSize:12,color:'#f59e0b',marginBottom:14}}>⚠️ Přihlaste se pro ukládání connectorů.</div>}
+
+                <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Autentifikace</div>
+
+                {def.authType!=='oauth'&&(
+                  <>
+                    <div style={{fontSize:12,color:t.txt,marginBottom:5,fontWeight:500}}>{def.keyLabel}</div>
+                    <input
+                      value={apiKey} onChange={e=>setApiKey(e.target.value)}
+                      placeholder={def.keyPlaceholder} type="password"
+                      style={{width:'100%',padding:'9px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:12,outline:'none',fontFamily:'monospace',boxSizing:'border-box',marginBottom:8}}/>
+                    {def.extraFields?.map(f=>(
+                      <div key={f.id} style={{marginBottom:8}}>
+                        <div style={{fontSize:12,color:t.txt,marginBottom:4,fontWeight:500}}>{f.label}</div>
+                        <input value={extraFields[f.id]||''} onChange={e=>setExtraFields(p=>({...p,[f.id]:e.target.value}))}
+                          placeholder={f.placeholder}
+                          style={{width:'100%',padding:'8px 11px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:7,color:t.txt,fontSize:12,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                      </div>
+                    ))}
+                    <div style={{fontSize:11,color:t.muted,lineHeight:1.5,padding:'7px 11px',background:t.btn,borderRadius:7,marginBottom:12}}>
+                      ℹ️ {def.keyHelp}
+                      {def.docsUrl&&<> · <a href={def.docsUrl} target="_blank" rel="noreferrer" style={{color:t.accent}}>Dokumentace ↗</a></>}
+                    </div>
+                  </>
+                )}
+
+                {/* Tlačítka akcí */}
+                <div style={{display:'flex',gap:7,marginBottom:12}}>
+                  <button onClick={testConn} disabled={testing||!apiKey.trim()}
+                    style={{padding:'8px 14px',borderRadius:8,background:testing||!apiKey.trim()?t.btn:'#6366f122',color:testing||!apiKey.trim()?t.muted:'#6366f1',border:`1px solid ${testing||!apiKey.trim()?t.border:'#6366f144'}`,fontSize:12,cursor:testing||!apiKey.trim()?'default':'pointer',fontFamily:'inherit',fontWeight:500}}>
+                    {testing?'⏳ Testuji…':'🔍 Otestovat'}
+                  </button>
+                  <button onClick={save} disabled={saving||!apiKey.trim()}
+                    style={{padding:'8px 16px',borderRadius:8,background:saving||!apiKey.trim()?t.btn:'#10b981',color:saving||!apiKey.trim()?t.muted:'#fff',border:'none',fontSize:12,cursor:saving||!apiKey.trim()?'default':'pointer',fontFamily:'inherit',fontWeight:600}}>
+                    {saving?'⏳ Ukládám…':'✓ Uložit'}
+                  </button>
+                  {isConnected&&<button onClick={disconnect} disabled={saving}
+                    style={{padding:'8px 12px',borderRadius:8,background:t.btn,color:'#ef4444',border:`1px solid #ef444433`,fontSize:12,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>
+                    Odpojit
+                  </button>}
+                </div>
+
+                {/* Test / error výsledek */}
+                {testResult&&<div style={{padding:'8px 12px',borderRadius:8,background:testResult.ok?'#10b98118':'#ef444418',border:`1px solid ${testResult.ok?'#10b98133':'#ef444433'}`,fontSize:12,color:testResult.ok?'#10b981':'#ef4444',marginBottom:12}}>
+                  {testResult.ok?'✓':'✗'} {testResult.msg}
+                </div>}
+                {err&&<div style={{padding:'8px 12px',borderRadius:8,background:'#ef444418',border:'1px solid #ef444433',fontSize:12,color:'#ef4444',marginBottom:12}}>✗ {err}</div>}
+
+                {/* Jak použít v chatu */}
+                <div style={{borderTop:`1px solid ${t.border}`,paddingTop:14,marginTop:4}}>
+                  <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Jak použít v chatu</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                    {def.actions.map(a=>(
+                      <div key={a} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 11px',background:t.btn,borderRadius:7,cursor:'pointer'}}
+                        onClick={()=>{navigator.clipboard.writeText(a)}}>
+                        <span style={{fontSize:13,color:t.muted}}>→</span>
+                        <span style={{fontSize:12,color:t.txt,fontStyle:'italic'}}>"{a}"</span>
+                        <span style={{fontSize:10,color:t.muted,marginLeft:'auto'}}>kopírovat</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:t.muted,marginTop:10,lineHeight:1.5}}>
+                    💡 Tip: Jakmile je connector připojený, Lumi ho automaticky použije když se ptáš na relevantní věci. Nebo napiš přímo co chceš.
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════════════════════════════
 // ── GoalsModal — Sledování cílů (nápad 19) ────────────────────────────────────
 function GoalsModal({t,token,onClose,callEdge}){
@@ -2902,14 +3000,7 @@ export default function Chat({session}){
       {showAuth   &&<AuthModal onClose={()=>setShowAuth(false)} dark={t.isDark}/>}
       {showSet&&<SettingsModal t={t} themeName={themeName} setThemeName={setThemeName} sysPmt={sysPmt} setSysPmt={setSysPmt} onClose={()=>setShowSet(false)} isLoggedIn={isLoggedIn} userId={session?.user?.id} memory={memory} setMemory={setMemory} shareConversation={shareConversation} exportChat={exportChat} setShowGoals={setShowGoals} setShowAddMem={setShowAddMem}/>}
       {showConnectors&&<ConnectorsModal t={t} onClose={()=>setShowConnectors(false)}
-        imgMode={imgMode} setImgMode={setImgMode} imgModel={imgModel} setImgModel={setImgModel} IMG_MODELS={IMG_MODELS}
-        webSearchType={webSearchType} setWebSearchType={setWebSearchType}
-        thinking={thinking} setThinking={setThinking}
-        memory={memory} setMemory={setMemory}
-        aiModel={aiModel} setAiModel={setAiModel} AI_MODELS={AI_MODELS}
-        writeStyle={writeStyle} setWriteStyle={setWriteStyle}
-        setShowLive={setShowLive} setShowLumiCode={setShowLumiCode} setShowLumiCowork={setShowLumiCowork}
-        isLoggedIn={isLoggedIn}
+        token={token||ANON} callEdge={callEdge} isLoggedIn={isLoggedIn}
       />}
       {showLive   &&<LiveModal t={t} onClose={()=>setShowLive(false)} sysPmt={sysPmt} token={token}/>}
       {showAddMem &&<AddMemoryModal t={t} onClose={()=>setShowAddMem(false)} onSave={addMemoryManual}/>}
