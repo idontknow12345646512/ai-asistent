@@ -1087,7 +1087,48 @@ function LumiCowork({t,token,onClose,callEdge}){
 // ══════════════════════════════════════════════════════════════════════════════
 // ── CONNECTORS — External Service Integrations (Claude Connectors styl) ───────
 // ══════════════════════════════════════════════════════════════════════════════
+// ── CONNECTOR DEFINITIONS ─────────────────────────────────────────────────────
+// authType: 'oauth' = Supabase OAuth flow, 'token' = paste token, 'url' = URL
 const CONNECTOR_DEFS=[
+  {
+    id:'google_drive',
+    name:'Google Drive',
+    icon:'📁',
+    color:'#1a73e8',
+    category:'Google',
+    desc:'Dokumenty, tabulky, prezentace a soubory',
+    authType:'oauth',
+    oauthProvider:'google',
+    scopes:'https://www.googleapis.com/auth/drive.readonly',
+    actions:['Hledej soubory','Zobraz moje dokumenty','Přečti dokument','Nedávno upravené'],
+    connectHelp:'Klikni "Připojit" — otevře se Google přihlášení a Lumi dostane přístup k Drive.',
+  },
+  {
+    id:'gmail',
+    name:'Gmail',
+    icon:'📧',
+    color:'#ea4335',
+    category:'Google',
+    desc:'Čti a vyhledávej v emailech',
+    authType:'oauth',
+    oauthProvider:'google',
+    scopes:'https://www.googleapis.com/auth/gmail.readonly',
+    actions:['Přečti poslední emaily','Hledej email od X','Nepřečtené zprávy','Shrn konverzaci'],
+    connectHelp:'Klikni "Připojit" — otevře se Google přihlášení a Lumi dostane přístup ke čtení emailů.',
+  },
+  {
+    id:'google_calendar',
+    name:'Google Kalendář',
+    icon:'📅',
+    color:'#0f9d58',
+    category:'Google',
+    desc:'Události, schůzky a plánování',
+    authType:'oauth',
+    oauthProvider:'google',
+    scopes:'https://www.googleapis.com/auth/calendar.readonly',
+    actions:['Co mám dnes','Příští schůzka','Tento týden','Přidej událost'],
+    connectHelp:'Připojí se přes Google OAuth. Lumi uvidí tvůj kalendář.',
+  },
   {
     id:'github',
     name:'GitHub',
@@ -1096,12 +1137,11 @@ const CONNECTOR_DEFS=[
     darkColor:'#e2e8f0',
     category:'Vývoj',
     desc:'Repozitáře, issues, pull requesty a kód',
-    authType:'api_key',
-    keyLabel:'Personal Access Token',
-    keyPlaceholder:'ghp_xxxxxxxxxxxxxxxxxxxx',
-    keyHelp:'Vytvoř token na github.com/settings/tokens (scope: repo, read:user)',
-    actions:['Zobraz moje repos','Otevřené issues','Nedávné commity','Hledej v kódu'],
-    docsUrl:'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
+    authType:'oauth',
+    oauthProvider:'github',
+    scopes:'repo read:user',
+    actions:['Moje repozitáře','Otevřené issues','Nedávné commity','Pull requesty'],
+    connectHelp:'Klikni "Připojit" — otevře se GitHub přihlášení a Lumi dostane přístup k tvým repozitářům.',
   },
   {
     id:'notion',
@@ -1111,27 +1151,13 @@ const CONNECTOR_DEFS=[
     darkColor:'#e2e8f0',
     category:'Produktivita',
     desc:'Stránky, databáze, poznámky a dokumenty',
-    authType:'api_key',
+    authType:'token',
     keyLabel:'Integration Token',
-    keyPlaceholder:'secret_xxxxxxxxxxxxxxxxxxxx',
-    keyHelp:'Vytvoř integraci na notion.so/my-integrations a sdílej stránky s integrací',
-    actions:['Hledej v Notion','Zobraz stránky','Vytvoř poznámku','Přidej do databáze'],
-    docsUrl:'https://developers.notion.com/docs/authorization',
-  },
-  {
-    id:'google_drive',
-    name:'Google Drive',
-    icon:'📁',
-    color:'#1a73e8',
-    darkColor:'#4da6ff',
-    category:'Soubory',
-    desc:'Dokumenty, tabulky, prezentace a soubory',
-    authType:'oauth',
-    keyLabel:'',
-    keyPlaceholder:'',
-    keyHelp:'Přihlašuje se přes Google OAuth (Google API Console)',
-    actions:['Hledej soubory','Zobraz dokumenty','Vytvoř dokument','Sdílej soubor'],
-    comingSoon:true,
+    keyPlaceholder:'secret_xxxxxxxxxxxx',
+    keyHelp:'notion.so/my-integrations → Nová integrace → zkopíruj token. Pak v Notion sdílej stránky s integrací.',
+    docsUrl:'https://developers.notion.com/docs/create-a-notion-integration',
+    actions:['Hledej stránky','Zobraz databáze','Přečti stránku','Vytvoř poznámku'],
+    connectHelp:'Notion bohužel neumožňuje přímý OAuth — potřebuješ Integration Token.',
   },
   {
     id:'slack',
@@ -1141,175 +1167,157 @@ const CONNECTOR_DEFS=[
     darkColor:'#e879f9',
     category:'Komunikace',
     desc:'Zprávy, kanály a pracovní prostory',
-    authType:'api_key',
-    keyLabel:'Bot User OAuth Token',
-    keyPlaceholder:'xoxb-xxxxxxxxxxxxxxxxxxxx',
-    keyHelp:'Vytvoř Slack App na api.slack.com/apps, přidej Bot Token Scopes',
-    actions:['Hledej zprávy','Zobraz kanály','Pošli zprávu','Shrni konverzaci'],
+    authType:'token',
+    keyLabel:'Bot Token',
+    keyPlaceholder:'xoxb-xxxxxxxxxxxxxxxxxx',
+    keyHelp:'api.slack.com/apps → vytvoř app → OAuth & Permissions → Bot Token. Přidej scope: channels:read, messages:read.',
     docsUrl:'https://api.slack.com/authentication/token-types',
+    actions:['Zprávy v kanálu','Hledej konverzaci','Shrnutí dne','Nepřečtené'],
+    connectHelp:'Slack vyžaduje Bot Token z Slack API konzole.',
   },
   {
     id:'rss',
-    name:'RSS / Novinky',
+    name:'RSS / Zprávy',
     icon:'📡',
     color:'#f59e0b',
-    darkColor:'#fbbf24',
     category:'Obsah',
-    desc:'Sleduj libovolné RSS/Atom zdroje zpráv',
+    desc:'Sleduj libovolné RSS/Atom zpravodajské zdroje',
     authType:'url',
     keyLabel:'RSS Feed URL',
-    keyPlaceholder:'https://example.com/feed.xml',
-    keyHelp:'Zadej URL RSS nebo Atom feedu — funguje s většinou zpravodajských webů',
-    actions:['Nejnovější články','Shrnutí dne','Hledej v článcích'],
+    keyPlaceholder:'https://ct24.cz/rss',
+    keyHelp:'Zadej URL RSS feedu. Funguje s ct24.cz/rss, novinky.cz/rss, bbc.co.uk/rss atd.',
+    actions:['Nejnovější zprávy','Shrnutí dne','Hledej téma'],
+    connectHelp:'Stačí vložit URL RSS feedu — žádné přihlašování.',
   },
   {
     id:'spotify',
     name:'Spotify',
     icon:'🎵',
     color:'#1db954',
-    darkColor:'#1db954',
     category:'Zábava',
     desc:'Hudba, playlisty a doporučení',
     authType:'oauth',
-    keyLabel:'',
-    keyPlaceholder:'',
-    keyHelp:'Vyžaduje Spotify OAuth přihlášení (Spotify Developer Dashboard)',
-    actions:['Co hraje','Moje playlisty','Doporučení','Hledej skladbu'],
+    oauthProvider:'spotify',
+    scopes:'user-read-currently-playing playlist-read-private',
+    actions:['Co hraje','Moje playlisty','Doporučení','Hledej'],
+    connectHelp:'Připojí se přes Spotify OAuth.',
     comingSoon:true,
-  },
-  {
-    id:'jira',
-    name:'Jira',
-    icon:'🔵',
-    color:'#0052cc',
-    darkColor:'#4da6ff',
-    category:'Vývoj',
-    desc:'Tickety, projekty a sprinty',
-    authType:'api_key',
-    keyLabel:'API Token',
-    keyPlaceholder:'ATATT3xFfGF0xxxxxxxxxxxxxxxx',
-    keyHelp:'Vytvoř token na id.atlassian.com/manage-profile/security/api-tokens. Také vyplň svůj email a Jira doménu v konfiguraci.',
-    actions:['Moje tickety','Otevřené bugy','Sprint overview','Vytvoř issue'],
-    extraFields:[
-      {id:'email',label:'Atlassian email',placeholder:'jmeno@firma.cz'},
-      {id:'domain',label:'Jira doména',placeholder:'firma.atlassian.net'},
-    ],
-    docsUrl:'https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/',
-  },
-  {
-    id:'openweather',
-    name:'OpenWeatherMap',
-    icon:'⛅',
-    color:'#eb6e4b',
-    darkColor:'#fb923c',
-    category:'Data',
-    desc:'Přesnější počasí s historií a předpovědí 16 dnů',
-    authType:'api_key',
-    keyLabel:'API Key',
-    keyPlaceholder:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-    keyHelp:'Registrace na openweathermap.org/api — free tier dává 1000 volání/den',
-    actions:['Počasí nyní','Předpověď 16 dnů','Historická data','Vzduch a pyl'],
-    docsUrl:'https://openweathermap.org/appid',
   },
 ]
 
+// ── CONNECTORS MODAL — OAuth styl ─────────────────────────────────────────────
 function ConnectorsModal({t,onClose,token,callEdge,isLoggedIn}){
-  const[connectors,setConnectors]=useState({})   // {connector_id: {api_key, config, enabled}}
+  const[connectors,setConnectors]=useState({}) // {id: {enabled, access_token, api_key, config}}
   const[selected,setSelected]=useState(CONNECTOR_DEFS[0].id)
-  const[apiKey,setApiKey]=useState('')
-  const[extraFields,setExtraFields]=useState({})
+  const[inputVal,setInputVal]=useState('')
   const[saving,setSaving]=useState(false)
   const[testing,setTesting]=useState(false)
-  const[testResult,setTestResult]=useState(null)
+  const[result,setResult]=useState(null) // {ok, msg}
   const[filter,setFilter]=useState('Vše')
-  const[err,setErr]=useState(null)
 
   const def=CONNECTOR_DEFS.find(d=>d.id===selected)||CONNECTOR_DEFS[0]
   const conn=connectors[selected]
-  const isConnected=!!conn?.api_key||!!conn?.config?.url
-
+  const isConnected=!!(conn?.access_token||conn?.api_key||conn?.config?.url)
   const CATS=['Vše',...[...new Set(CONNECTOR_DEFS.map(d=>d.category))]]
+  const filtered=CONNECTOR_DEFS.filter(d=>filter==='Vše'||d.category===filter)
 
-  // Načti uložené connectors z DB
+  // Načti uložené connectors
   useEffect(()=>{
     if(!isLoggedIn||!token)return
     callEdge('get_connectors',{},token).then(d=>{
-      if(d.connectors){
-        const map={}
-        d.connectors.forEach(c=>{map[c.connector_id]={api_key:c.api_key||'',config:c.config||{},enabled:c.enabled}})
-        setConnectors(map)
-      }
+      if(!d.connectors)return
+      const map={}
+      d.connectors.forEach(c=>{map[c.connector_id]={access_token:c.access_token||'',api_key:c.api_key||'',config:c.config||{},enabled:c.enabled,email:c.provider_email}})
+      setConnectors(map)
     }).catch(()=>{})
   },[isLoggedIn,token]) // eslint-disable-line
 
-  // Sync form při změně selected
+  // Sync input při změně selected
   useEffect(()=>{
     const c=connectors[selected]
-    if(c){
-      setApiKey(c.api_key||c.config?.url||'')
-      const ef={}
-      def.extraFields?.forEach(f=>{ef[f.id]=c.config?.[f.id]||''})
-      setExtraFields(ef)
-    }else{
-      setApiKey('');setExtraFields({})
-    }
-    setTestResult(null);setErr(null)
+    setInputVal(c?.api_key||c?.config?.url||'')
+    setResult(null)
   },[selected,connectors]) // eslint-disable-line
 
-  const save=async()=>{
-    if(!isLoggedIn){setErr('Přihlaste se pro ukládání connectorů.');return}
-    setSaving(true);setErr(null)
+  // OAuth connect — otevře Supabase OAuth popup
+  const connectOAuth=async()=>{
+    if(!isLoggedIn){setResult({ok:false,msg:'Nejdříve se přihlaš do Lumi.'});return}
+    setSaving(true);setResult(null)
     try{
-      const config={...extraFields}
-      if(def.authType==='url')config.url=apiKey
+      const redirectTo=`${window.location.origin}?connector=${def.id}`
+      const{error}=await supabase.auth.signInWithOAuth({
+        provider:def.oauthProvider,
+        options:{
+          scopes:def.scopes,
+          redirectTo,
+          queryParams:{access_type:'offline',prompt:'consent'},
+          skipBrowserRedirect:false,
+        }
+      })
+      if(error)throw error
+      // Token se uloží po redirectu — ukážeme info
+      setResult({ok:true,msg:'Přesměrovávám na '+def.oauthProvider+'...'})
+    }catch(e){setResult({ok:false,msg:'Chyba: '+e.message})}
+    setSaving(false)
+  }
+
+  // Token/URL save
+  const saveToken=async()=>{
+    if(!inputVal.trim()){setResult({ok:false,msg:'Zadej hodnotu.'});return}
+    if(!isLoggedIn){setResult({ok:false,msg:'Nejdříve se přihlaš.'});return}
+    setSaving(true);setResult(null)
+    try{
+      const isUrl=def.authType==='url'
       await callEdge('save_connector',{
-        connector_id:selected,
-        api_key:def.authType!=='url'?apiKey:'',
-        config,
+        connector_id:def.id,
+        api_key:isUrl?'':inputVal,
+        config:isUrl?{url:inputVal}:{},
+        auth_type:def.authType,
         enabled:true
       },token)
-      setConnectors(p=>({...p,[selected]:{api_key:apiKey,config,enabled:true}}))
-      setTestResult({ok:true,msg:'Uloženo úspěšně!'})
-    }catch(e){setErr('Chyba ukládání: '+e.message)}
+      setConnectors(p=>({...p,[def.id]:{api_key:isUrl?'':inputVal,config:isUrl?{url:inputVal}:{},enabled:true}}))
+      setResult({ok:true,msg:'Uloženo! Connector je aktivní.'})
+    }catch(e){setResult({ok:false,msg:'Chyba: '+e.message})}
     setSaving(false)
   }
 
-  const disconnect=async()=>{
-    if(!isLoggedIn)return
-    setSaving(true)
+  // Test connector
+  const testConnector=async()=>{
+    setTesting(true);setResult(null)
     try{
-      await callEdge('delete_connector',{connector_id:selected},token)
-      setConnectors(p=>{const n={...p};delete n[selected];return n})
-      setApiKey('');setExtraFields({});setTestResult(null)
-    }catch(e){setErr('Chyba: '+e.message)}
-    setSaving(false)
-  }
-
-  const testConn=async()=>{
-    if(!apiKey.trim()){setErr('Zadej API klíč nebo URL.');return}
-    setTesting(true);setTestResult(null);setErr(null)
-    try{
-      const d=await callEdge('test_connector',{connector_id:selected,api_key:apiKey,config:{...extraFields}},token)
-      setTestResult({ok:!d.error,msg:d.error||d.message||'Připojení OK!'})
-    }catch(e){setTestResult({ok:false,msg:'Chyba: '+e.message})}
+      const d=await callEdge('use_connector',{connector_id:def.id,action:def.id==='github'?'user':def.id==='google_drive'?'list':def.id==='gmail'?'profile':'test',params:{}},token)
+      if(d.error)throw new Error(d.error)
+      setResult({ok:true,msg:'✓ Připojení funguje!'})
+    }catch(e){setResult({ok:false,msg:'Chyba: '+e.message})}
     setTesting(false)
   }
 
-  const filtered=CONNECTOR_DEFS.filter(d=>filter==='Vše'||d.category===filter)
+  // Odpojit
+  const disconnect=async()=>{
+    setSaving(true)
+    try{
+      await callEdge('delete_connector',{connector_id:def.id},token)
+      setConnectors(p=>{const n={...p};delete n[def.id];return n})
+      setInputVal('');setResult({ok:true,msg:'Odpojeno.'})
+    }catch(e){setResult({ok:false,msg:e.message})}
+    setSaving(false)
+  }
+
+  const connectedCount=Object.keys(connectors).length
 
   return(
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.65)',zIndex:80,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(5px)'}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:'min(820px,97vw)',height:'min(600px,92vh)',display:'flex',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .18s ease',fontFamily:"'DM Sans',sans-serif"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'min(840px,97vw)',height:'min(600px,92vh)',display:'flex',background:t.modal,border:`1px solid ${t.border}`,borderRadius:16,overflow:'hidden',animation:'fadeInScale .18s ease',fontFamily:"'DM Sans',sans-serif"}}>
 
-        {/* ── Levý panel — seznam connectorů ── */}
-        <div style={{width:230,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0,background:t.card}}>
+        {/* ── Levý panel ── */}
+        <div style={{width:235,borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column',flexShrink:0,background:t.card}}>
           <div style={{padding:'14px 14px 10px',borderBottom:`1px solid ${t.border}`}}>
-            <div style={{fontWeight:700,fontSize:15,color:t.txt,marginBottom:8}}>🔌 Connectors</div>
-            {/* Kategorie filtry */}
+            <div style={{fontWeight:700,fontSize:15,color:t.txt,marginBottom:2}}>🔌 Connectors</div>
+            <div style={{fontSize:11,color:t.muted,marginBottom:8}}>{connectedCount} připojeno</div>
             <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
               {CATS.map(c=>(
                 <button key={c} onClick={()=>setFilter(c)}
-                  style={{padding:'2px 7px',borderRadius:6,fontSize:10,border:`1px solid ${filter===c?t.accent:t.border}`,background:filter===c?t.accent+'22':'transparent',color:filter===c?t.accent:t.muted,cursor:'pointer',fontFamily:'inherit',fontWeight:filter===c?600:400}}>
+                  style={{padding:'2px 7px',borderRadius:6,fontSize:10,border:`1px solid ${filter===c?t.accent:t.border}`,background:filter===c?t.accent+'22':'transparent',color:filter===c?t.accent:t.muted,cursor:'pointer',fontFamily:'inherit'}}>
                   {c}
                 </button>
               ))}
@@ -1318,118 +1326,133 @@ function ConnectorsModal({t,onClose,token,callEdge,isLoggedIn}){
           <div style={{flex:1,overflow:'auto'}}>
             {filtered.map(d=>{
               const c=connectors[d.id]
-              const connected=!!c?.api_key||!!c?.config?.url
+              const connected=!!(c?.access_token||c?.api_key||c?.config?.url)
               return(
                 <div key={d.id} onClick={()=>setSelected(d.id)}
-                  style={{display:'flex',alignItems:'center',gap:9,padding:'9px 13px',cursor:'pointer',background:selected===d.id?t.active:'transparent',borderLeft:`2px solid ${selected===d.id?t.accent:'transparent'}`,transition:'all .1s'}}>
+                  style={{display:'flex',alignItems:'center',gap:9,padding:'10px 13px',cursor:'pointer',background:selected===d.id?t.active:'transparent',borderLeft:`2px solid ${selected===d.id?t.accent:'transparent'}`,transition:'all .1s'}}>
                   <span style={{fontSize:18,width:24,textAlign:'center'}}>{d.icon}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:selected===d.id?600:400,color:selected===d.id?t.txt:t.muted,display:'flex',alignItems:'center',gap:4}}>
-                      {d.name}
-                      {d.comingSoon&&<span style={{fontSize:9,background:'#f59e0b22',color:'#f59e0b',padding:'0 4px',borderRadius:3}}>brzy</span>}
-                    </div>
+                    <div style={{fontSize:12,fontWeight:selected===d.id?600:400,color:selected===d.id?t.txt:t.muted}}>{d.name}</div>
                     <div style={{fontSize:10,color:t.muted}}>{d.category}</div>
                   </div>
-                  <div style={{width:7,height:7,borderRadius:'50%',background:connected?'#10b981':t.border,flexShrink:0}}/>
+                  {connected
+                    ?<span style={{fontSize:10,color:'#10b981',fontWeight:600}}>✓</span>
+                    :<div style={{width:7,height:7,borderRadius:'50%',background:t.border}}/>
+                  }
                 </div>
               )
             })}
           </div>
-          <div style={{padding:'10px 13px',borderTop:`1px solid ${t.border}`,fontSize:10,color:t.muted}}>
-            <div>🟢 Připojeno: {Object.keys(connectors).length}</div>
-          </div>
         </div>
 
-        {/* ── Pravý panel — detail connectoru ── */}
+        {/* ── Pravý panel ── */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           {/* Header */}
-          <div style={{display:'flex',alignItems:'center',gap:11,padding:'14px 18px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
-            <span style={{fontSize:26}}>{def.icon}</span>
+          <div style={{display:'flex',alignItems:'center',gap:12,padding:'16px 20px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+            <span style={{fontSize:28}}>{def.icon}</span>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:16,color:t.txt,display:'flex',alignItems:'center',gap:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:16,color:t.txt}}>
                 {def.name}
-                {def.comingSoon&&<span style={{fontSize:10,background:'#f59e0b22',color:'#f59e0b',padding:'1px 8px',borderRadius:4,fontWeight:500}}>Brzy dostupné</span>}
+                {def.comingSoon&&<span style={{fontSize:10,background:'#f59e0b22',color:'#f59e0b',padding:'1px 8px',borderRadius:4}}>Brzy</span>}
                 {isConnected&&<span style={{fontSize:10,background:'#10b98122',color:'#10b981',padding:'1px 8px',borderRadius:4,fontWeight:600}}>● Připojeno</span>}
               </div>
-              <div style={{fontSize:12,color:t.muted,marginTop:1}}>{def.desc}</div>
+              <div style={{fontSize:12,color:t.muted}}>{def.desc}</div>
             </div>
-            <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1}}>✕</button>
+            <button onClick={onClose} style={{color:t.muted,background:'none',border:'none',cursor:'pointer',fontSize:18}}>✕</button>
           </div>
 
-          {/* Content */}
-          <div style={{flex:1,overflow:'auto',padding:'16px 20px'}}>
+          <div style={{flex:1,overflow:'auto',padding:'18px 22px'}}>
             {def.comingSoon?(
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12,color:t.muted}}>
-                <span style={{fontSize:48}}>{def.icon}</span>
-                <div style={{fontSize:16,fontWeight:600,color:t.txt}}>{def.name} — Brzy dostupné</div>
-                <div style={{fontSize:13,textAlign:'center',maxWidth:300,lineHeight:1.6}}>{def.keyHelp}</div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'80%',gap:12,color:t.muted}}>
+                <span style={{fontSize:52}}>{def.icon}</span>
+                <div style={{fontSize:15,fontWeight:600,color:t.txt}}>{def.name} — Brzy dostupné</div>
+                <div style={{fontSize:13,textAlign:'center',maxWidth:280,lineHeight:1.6}}>{def.connectHelp}</div>
               </div>
             ):(
               <>
-                {/* Auth forma */}
-                {!isLoggedIn&&<div style={{padding:'10px 13px',background:'#f59e0b18',border:'1px solid #f59e0b44',borderRadius:8,fontSize:12,color:'#f59e0b',marginBottom:14}}>⚠️ Přihlaste se pro ukládání connectorů.</div>}
+                {!isLoggedIn&&<div style={{padding:'10px 13px',background:'#f59e0b18',border:'1px solid #f59e0b44',borderRadius:8,fontSize:12,color:'#f59e0b',marginBottom:14}}>⚠️ Pro připojení se nejdříve přihlaš.</div>}
 
-                <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Autentifikace</div>
-
-                {def.authType!=='oauth'&&(
-                  <>
-                    <div style={{fontSize:12,color:t.txt,marginBottom:5,fontWeight:500}}>{def.keyLabel}</div>
-                    <input
-                      value={apiKey} onChange={e=>setApiKey(e.target.value)}
-                      placeholder={def.keyPlaceholder} type="password"
-                      style={{width:'100%',padding:'9px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:12,outline:'none',fontFamily:'monospace',boxSizing:'border-box',marginBottom:8}}/>
-                    {def.extraFields?.map(f=>(
-                      <div key={f.id} style={{marginBottom:8}}>
-                        <div style={{fontSize:12,color:t.txt,marginBottom:4,fontWeight:500}}>{f.label}</div>
-                        <input value={extraFields[f.id]||''} onChange={e=>setExtraFields(p=>({...p,[f.id]:e.target.value}))}
-                          placeholder={f.placeholder}
-                          style={{width:'100%',padding:'8px 11px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:7,color:t.txt,fontSize:12,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-                      </div>
-                    ))}
-                    <div style={{fontSize:11,color:t.muted,lineHeight:1.5,padding:'7px 11px',background:t.btn,borderRadius:7,marginBottom:12}}>
-                      ℹ️ {def.keyHelp}
-                      {def.docsUrl&&<> · <a href={def.docsUrl} target="_blank" rel="noreferrer" style={{color:t.accent}}>Dokumentace ↗</a></>}
+                {/* OAuth connector */}
+                {def.authType==='oauth'&&(
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:13,color:t.muted,lineHeight:1.7,marginBottom:14,padding:'10px 14px',background:t.btn,borderRadius:10,border:`1px solid ${t.border}`}}>
+                      🔐 {def.connectHelp}
                     </div>
-                  </>
+                    {isConnected?(
+                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                        <div style={{padding:'12px 16px',background:'#10b98115',border:'1px solid #10b98133',borderRadius:10,display:'flex',alignItems:'center',gap:10}}>
+                          <span style={{fontSize:20}}>{def.icon}</span>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600,color:'#10b981'}}>Připojeno ✓</div>
+                            {conn?.email&&<div style={{fontSize:11,color:t.muted}}>{conn.email}</div>}
+                          </div>
+                        </div>
+                        <div style={{display:'flex',gap:8}}>
+                          <button onClick={testConnector} disabled={testing}
+                            style={{flex:1,padding:'9px',borderRadius:8,background:t.btn,color:t.muted,border:`1px solid ${t.border}`,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+                            {testing?'⏳ Testuji…':'🔍 Otestovat připojení'}
+                          </button>
+                          <button onClick={disconnect} disabled={saving}
+                            style={{padding:'9px 14px',borderRadius:8,background:'#ef444418',color:'#ef4444',border:'1px solid #ef444433',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+                            Odpojit
+                          </button>
+                        </div>
+                      </div>
+                    ):(
+                      <button onClick={connectOAuth} disabled={saving||!isLoggedIn}
+                        style={{width:'100%',padding:'13px',borderRadius:10,background:def.color,color:'#fff',border:'none',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'opacity .15s',opacity:saving?0.7:1}}>
+                        <span style={{fontSize:18}}>{def.icon}</span>
+                        {saving?'Přesměrovávám…':`Připojit ${def.name}`}
+                      </button>
+                    )}
+                  </div>
                 )}
 
-                {/* Tlačítka akcí */}
-                <div style={{display:'flex',gap:7,marginBottom:12}}>
-                  <button onClick={testConn} disabled={testing||!apiKey.trim()}
-                    style={{padding:'8px 14px',borderRadius:8,background:testing||!apiKey.trim()?t.btn:'#6366f122',color:testing||!apiKey.trim()?t.muted:'#6366f1',border:`1px solid ${testing||!apiKey.trim()?t.border:'#6366f144'}`,fontSize:12,cursor:testing||!apiKey.trim()?'default':'pointer',fontFamily:'inherit',fontWeight:500}}>
-                    {testing?'⏳ Testuji…':'🔍 Otestovat'}
-                  </button>
-                  <button onClick={save} disabled={saving||!apiKey.trim()}
-                    style={{padding:'8px 16px',borderRadius:8,background:saving||!apiKey.trim()?t.btn:'#10b981',color:saving||!apiKey.trim()?t.muted:'#fff',border:'none',fontSize:12,cursor:saving||!apiKey.trim()?'default':'pointer',fontFamily:'inherit',fontWeight:600}}>
-                    {saving?'⏳ Ukládám…':'✓ Uložit'}
-                  </button>
-                  {isConnected&&<button onClick={disconnect} disabled={saving}
-                    style={{padding:'8px 12px',borderRadius:8,background:t.btn,color:'#ef4444',border:`1px solid #ef444433`,fontSize:12,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>
-                    Odpojit
-                  </button>}
-                </div>
+                {/* Token connector */}
+                {(def.authType==='token'||def.authType==='url')&&(
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:13,color:t.muted,lineHeight:1.7,marginBottom:12,padding:'10px 14px',background:t.btn,borderRadius:10,border:`1px solid ${t.border}`}}>
+                      🔑 {def.connectHelp}
+                      {def.docsUrl&&<> · <a href={def.docsUrl} target="_blank" rel="noreferrer" style={{color:t.accent}}>Dokumentace ↗</a></>}
+                    </div>
+                    <div style={{fontSize:12,fontWeight:500,color:t.txt,marginBottom:6}}>{def.keyLabel||'URL'}</div>
+                    <input value={inputVal} onChange={e=>setInputVal(e.target.value)}
+                      placeholder={def.keyPlaceholder} type={def.authType==='url'?'url':'password'}
+                      style={{width:'100%',padding:'10px 12px',background:t.inBg,border:`1px solid ${t.inBrd}`,borderRadius:8,color:t.txt,fontSize:13,outline:'none',fontFamily:'monospace',boxSizing:'border-box',marginBottom:10}}/>
+                    <div style={{fontSize:11,color:t.muted,marginBottom:12,lineHeight:1.5}}>💡 {def.keyHelp}</div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={saveToken} disabled={saving||!inputVal.trim()}
+                        style={{flex:1,padding:'10px',borderRadius:9,background:saving||!inputVal.trim()?t.btn:'#10b981',color:saving||!inputVal.trim()?t.muted:'#fff',border:'none',fontSize:13,fontWeight:700,cursor:saving?'default':'pointer',fontFamily:'inherit'}}>
+                        {saving?'⏳ Ukládám…':'✓ Uložit a připojit'}
+                      </button>
+                      {isConnected&&<button onClick={disconnect} style={{padding:'10px 14px',borderRadius:9,background:'#ef444418',color:'#ef4444',border:'1px solid #ef444433',fontSize:12,cursor:'pointer'}}>Odpojit</button>}
+                    </div>
+                  </div>
+                )}
 
-                {/* Test / error výsledek */}
-                {testResult&&<div style={{padding:'8px 12px',borderRadius:8,background:testResult.ok?'#10b98118':'#ef444418',border:`1px solid ${testResult.ok?'#10b98133':'#ef444433'}`,fontSize:12,color:testResult.ok?'#10b981':'#ef4444',marginBottom:12}}>
-                  {testResult.ok?'✓':'✗'} {testResult.msg}
-                </div>}
-                {err&&<div style={{padding:'8px 12px',borderRadius:8,background:'#ef444418',border:'1px solid #ef444433',fontSize:12,color:'#ef4444',marginBottom:12}}>✗ {err}</div>}
+                {result&&(
+                  <div style={{padding:'9px 13px',borderRadius:8,background:result.ok?'#10b98118':'#ef444418',border:`1px solid ${result.ok?'#10b98133':'#ef444433'}`,fontSize:12,color:result.ok?'#10b981':'#ef4444',marginBottom:14}}>
+                    {result.ok?'✓':'✗'} {result.msg}
+                  </div>
+                )}
 
-                {/* Jak použít v chatu */}
-                <div style={{borderTop:`1px solid ${t.border}`,paddingTop:14,marginTop:4}}>
-                  <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Jak použít v chatu</div>
+                {/* Jak použít */}
+                <div style={{borderTop:`1px solid ${t.border}`,paddingTop:14}}>
+                  <div style={{fontSize:11,fontWeight:600,color:t.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Příklady použití v chatu</div>
                   <div style={{display:'flex',flexDirection:'column',gap:5}}>
                     {def.actions.map(a=>(
-                      <div key={a} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 11px',background:t.btn,borderRadius:7,cursor:'pointer'}}
-                        onClick={()=>{navigator.clipboard.writeText(a)}}>
-                        <span style={{fontSize:13,color:t.muted}}>→</span>
-                        <span style={{fontSize:12,color:t.txt,fontStyle:'italic'}}>"{a}"</span>
-                        <span style={{fontSize:10,color:t.muted,marginLeft:'auto'}}>kopírovat</span>
+                      <div key={a} onClick={()=>navigator.clipboard.writeText(a)}
+                        style={{display:'flex',alignItems:'center',gap:9,padding:'8px 12px',background:t.btn,borderRadius:8,cursor:'pointer',transition:'background .1s'}}
+                        onMouseOver={e=>e.currentTarget.style.background=t.active}
+                        onMouseOut={e=>e.currentTarget.style.background=t.btn}>
+                        <span style={{color:t.accent,fontSize:12}}>→</span>
+                        <span style={{fontSize:13,color:t.txt,fontStyle:'italic',flex:1}}>„{a}"</span>
+                        <span style={{fontSize:10,color:t.muted}}>kopírovat</span>
                       </div>
                     ))}
                   </div>
-                  <div style={{fontSize:11,color:t.muted,marginTop:10,lineHeight:1.5}}>
-                    💡 Tip: Jakmile je connector připojený, Lumi ho automaticky použije když se ptáš na relevantní věci. Nebo napiš přímo co chceš.
+                  <div style={{fontSize:11,color:t.muted,marginTop:10,lineHeight:1.6}}>
+                    💡 Jakmile je connector připojený, Lumi ho automaticky použije — nebo napiš přímo co chceš.
                   </div>
                 </div>
               </>
@@ -1440,6 +1463,7 @@ function ConnectorsModal({t,onClose,token,callEdge,isLoggedIn}){
     </div>
   )
 }
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ── GoalsModal — Sledování cílů (nápad 19) ────────────────────────────────────
 function GoalsModal({t,token,onClose,callEdge}){
@@ -1681,6 +1705,33 @@ export default function Chat({session}){
   useEffect(()=>{
     if(isLoggedIn){getFreshToken().then(setToken);loadConvs();loadProjects()}
     else{const c=mkLocal();setConvs([c]);setActiveId(c.id);setMsgs([])}
+  },[isLoggedIn]) // eslint-disable-line
+
+  // OAuth Connector redirect handler — zachytí token po Google/GitHub přihlášení
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search)
+    const connectorId=params.get('connector')
+    if(!connectorId||!isLoggedIn)return
+    // Smaž parametr z URL (čistě)
+    window.history.replaceState({},'',window.location.pathname)
+    // Získej aktuální session s OAuth tokenem
+    supabase.auth.getSession().then(async({data:{session}})=>{
+      if(!session?.provider_token)return
+      const tk=session.access_token
+      try{
+        await callEdge('save_connector',{
+          connector_id:connectorId,
+          access_token:session.provider_token,
+          refresh_token:session.provider_refresh_token||'',
+          auth_type:'oauth',
+          provider_email:session.user?.email||'',
+          enabled:true
+        },tk)
+        // Zobraz toast
+        setAutoMemToast(`✓ ${connectorId.replace('_',' ')} připojeno!`)
+        setTimeout(()=>setAutoMemToast(null),3000)
+      }catch(e){console.warn('Connector save after OAuth:',e)}
+    })
   },[isLoggedIn]) // eslint-disable-line
 
   // Načtení projektů
